@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "doomscrolling",
   "version": "${version}",
-  "name": "Doomscrolling",
-  "description": "Lightweight local YouTube Shorts player for Minecraft with keybind scrolling, autoscroll, chat mouse controls, subtitles, and zero FPS impact.",
+  "name": "Doomscroll",
+  "description": "Watch YouTube Shorts right inside Minecraft. Drag, resize, and scroll without leaving the game.",
   "authors": [
     "xFlxme"
   ],
