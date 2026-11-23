@@ -686,6 +686,12 @@ public final class YouTubeShortsBridge {
 			        state.autoScrolledForId = '';
 			        clearTimeout(state.autoScrollTimer);
 			        state.autoScrollTimer = null;
+			        try {
+			          const allVideos = document.querySelectorAll('video');
+			          for (const v of allVideos) {
+			            if (v !== video && !v.paused) v.pause();
+			          }
+			        } catch (_) {}
 			        applySubtitles(false);
 			        force = true;
 			      } else if (onShorts && state.subtitles && state.lastSubtitlesSyncId !== (id + ':true') && videoReady) {

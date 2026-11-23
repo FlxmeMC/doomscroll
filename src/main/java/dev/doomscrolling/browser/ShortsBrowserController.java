@@ -48,6 +48,8 @@ public final class ShortsBrowserController {
 	private int currentBrowserHeight = 0;
 	private int appliedFpsCap = -1;
 	private long lastPeriodicReinjectMs = 0L;
+	private long unfocusedSinceMs = 0L;
+	private volatile long lastScheduledInjectMs = 0L;
 
 	private volatile String toastMessage = "";
 	private volatile long toastExpiresAtMs = 0L;
@@ -126,6 +128,7 @@ public final class ShortsBrowserController {
 		boolean shouldBeActive = overlayOpen || (inWorld && config.hudVisible);
 
 		if (!shouldBeActive) {
+			unfocusedSinceMs = 0L;
 			if (browser != null && (config.pauseWhenHidden || !inWorld) && !suspended) {
 				suspendBrowser();
 			}
@@ -133,9 +136,23 @@ public final class ShortsBrowserController {
 		}
 
 		if (browser == null) {
-			ensureBrowserCreated(minecraft);
+			if (minecraft.isWindowActive()) {
+				ensureBrowserCreated(minecraft);
+			}
 			return;
 		}
+
+		long now = LunarDraw.nowMs();
+		if (!minecraft.isWindowActive()) {
+			applyFpsCap(1);
+			if (unfocusedSinceMs == 0L) {
+				unfocusedSinceMs = now;
+			} else if (config.pauseWhenHidden && !suspended && now - unfocusedSinceMs >= 1000L) {
+				suspendBrowser();
+			}
+			return;
+		}
+		unfocusedSinceMs = 0L;
 
 		if (suspended) {
 			resumeBrowser();
@@ -146,7 +163,6 @@ public final class ShortsBrowserController {
 		}
 		applyFpsCap(config.browserFps);
 
-		long now = LunarDraw.nowMs();
 		if (now - lastPeriodicReinjectMs > 4000L && !browser.isLoading()) {
 			lastPeriodicReinjectMs = now;
 			injectBridgeIfMissing();
@@ -205,11 +221,7 @@ public final class ShortsBrowserController {
 						return;
 					}
 					state.set(state.get().withUrl(url, cefBrowser.isLoading()));
-					minecraft.execute(() -> {
-						if (browser != null) {
-							injectBridge();
-						}
-					});
+					scheduleInjectBridge(minecraft);
 				}
 
 				@Override
@@ -251,7 +263,7 @@ public final class ShortsBrowserController {
 					if (!isOwnBrowser(cefBrowser)) return;
 					state.set(state.get().withUrl(cefBrowser.getURL(), isLoading));
 					if (!isLoading) {
-						minecraft.execute(ShortsBrowserController.this::injectBridge);
+						scheduleInjectBridge(minecraft);
 					}
 				}
 
@@ -264,11 +276,23 @@ public final class ShortsBrowserController {
 				@Override
 				public void onLoadEnd(CefBrowser cefBrowser, CefFrame frame, int httpStatusCode) {
 					if (!isOwnBrowser(cefBrowser) || frame == null || !frame.isMain()) return;
-					minecraft.execute(ShortsBrowserController.this::injectBridge);
+					scheduleInjectBridge(minecraft);
 				}
 			};
 			Rinku.getClient().addLoadHandler(loadHandler);
 		}
+	}
+
+	private void scheduleInjectBridge(Minecraft minecraft) {
+		if (suspended) return;
+		long now = LunarDraw.nowMs();
+		if (now - lastScheduledInjectMs < 400L) return;
+		lastScheduledInjectMs = now;
+		minecraft.execute(() -> {
+			if (browser != null && !suspended) {
+				injectBridge();
+			}
+		});
 	}
 
 	private void handleBridgeEvent(String event) {
