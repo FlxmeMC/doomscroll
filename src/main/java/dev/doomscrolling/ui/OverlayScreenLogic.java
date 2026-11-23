@@ -1,24 +1,20 @@
 package dev.doomscrolling.ui;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import de.keksuccino.rinku.RinkuBrowser;
 import dev.doomscrolling.browser.ShortsBrowserController;
 import dev.doomscrolling.browser.ShortsState;
 import dev.doomscrolling.config.DoomscrollingConfig;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import dev.doomscrolling.platform.McPlatform;
+import dev.doomscrolling.platform.UiCanvas;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.input.CharacterEvent;
-import net.minecraft.client.input.KeyEvent;
-import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
-import org.jetbrains.annotations.NotNull;
-import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public final class DoomscrollingScreen extends Screen {
+public final class OverlayScreenLogic {
 
 	private record ClickArea(int x, int y, int w, int h, Runnable action, String label, boolean active) {
 		boolean contains(double mx, double my) {
@@ -30,6 +26,11 @@ public final class DoomscrollingScreen extends Screen {
 	private final ShortsBrowserController controller;
 	private final LunarHudRenderer hudRenderer;
 
+	private Minecraft minecraft;
+	private Font font;
+	private int width;
+	private int height;
+
 	private boolean signInModalOpen = false;
 	private int modalX, modalY, modalW, modalH;
 	private int modalRenderW, modalRenderH;
@@ -39,22 +40,17 @@ public final class DoomscrollingScreen extends Screen {
 	private final List<ClickArea> buttons = new ArrayList<>();
 	private boolean lastSignedInState = false;
 
-	public DoomscrollingScreen(Screen parent, ShortsBrowserController controller, LunarHudRenderer hudRenderer) {
-		super(Component.translatable("screen.doomscrolling.title"));
+	public OverlayScreenLogic(Screen parent, ShortsBrowserController controller, LunarHudRenderer hudRenderer) {
 		this.parent = parent;
 		this.controller = controller;
 		this.hudRenderer = hudRenderer;
 	}
 
-	@Override
-	public boolean isPauseScreen() {
-		return false;
-	}
-
-	@Override
-	protected void init() {
-		super.init();
-		clearWidgets();
+	public void init(Minecraft minecraft, Font font, int width, int height) {
+		this.minecraft = minecraft;
+		this.font = font;
+		this.width = width;
+		this.height = height;
 		lastSignedInState = controller.state().signedIn();
 
 		if (signInModalOpen) {
@@ -94,7 +90,9 @@ public final class DoomscrollingScreen extends Screen {
 		modalX = (width - modalW) / 2;
 		modalY = (height - (modalH + headerH)) / 2 + headerH;
 
-		float scale = Math.max(1.0f, Math.min(1.5f, (float) minecraft.getWindow().getGuiScale()));
+		float scale = minecraft != null
+				? Math.max(1.0f, Math.min(1.5f, (float) minecraft.getWindow().getGuiScale()))
+				: 1.0f;
 		if (modalW * scale > 720) scale = 720.0f / modalW;
 		if (modalH * scale > 780) scale = 780.0f / modalH;
 		modalRenderW = Math.max(300, Math.round(modalW * scale));
@@ -206,15 +204,7 @@ public final class DoomscrollingScreen extends Screen {
 		}, "Reset Layout", false));
 	}
 
-	@Override
-	public void resize(int w, int h) {
-		super.resize(w, h);
-		init();
-	}
-
-	@Override
 	public void tick() {
-		super.tick();
 		ShortsState st = controller.state();
 		if (signInModalOpen && st.signedIn()) {
 			closeSignInModal(!st.onShortsPage());
@@ -226,7 +216,6 @@ public final class DoomscrollingScreen extends Screen {
 		}
 	}
 
-	@Override
 	public void onClose() {
 		hudRenderer.resetInteraction();
 		if (signInModalOpen) {
@@ -235,24 +224,21 @@ public final class DoomscrollingScreen extends Screen {
 		}
 		controller.returnToHudMode();
 		if (minecraft != null) {
-			minecraft.gui.setScreen(parent);
+			McPlatform.get().setScreen(minecraft, parent);
 		}
 	}
 
-	@Override
-	public void extractBackground(@NotNull GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
+	public void renderBackground(UiCanvas g) {
 		g.fill(0, 0, width, height, signInModalOpen ? 0xBB080808 : 0x48080808);
 	}
 
-	@Override
-	public void extractRenderState(@NotNull GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
-		super.extractRenderState(g, mouseX, mouseY, partialTick);
+	public void render(UiCanvas g, int mouseX, int mouseY) {
 		int accent = controller.config().accentTheme.argb();
 
 		if (signInModalOpen) {
 			int headerH = 24;
 			LunarDraw.drawGlassCard(g, modalX - 2, modalY - headerH, modalW + 4, modalH + headerH + 2, 0xF20F0F0F, false);
-			g.centeredText(font, "Sign in to YouTube", modalX + modalW / 2, modalY - 17, LunarDraw.COLOR_TEXT_PRIMARY);
+			g.drawCenteredText(font, "Sign in to YouTube", modalX + modalW / 2, modalY - 17, LunarDraw.COLOR_TEXT_PRIMARY);
 			blitSignInBrowser(g, modalX, modalY, modalW, modalH, accent);
 		} else {
 			if (controller.config().hudVisible) {
@@ -260,8 +246,8 @@ public final class DoomscrollingScreen extends Screen {
 			}
 
 			LunarDraw.drawGlassCard(g, panelX, panelY, panelW, panelH, LunarDraw.COLOR_YT_BLACK, false);
-			g.text(font, "Doomscrolling", panelX + 8, panelY + 7, LunarDraw.COLOR_TEXT_PRIMARY, false);
-			g.centeredText(font, "Drag to move • Edges to resize", panelX + panelW / 2, footerTextY, LunarDraw.COLOR_TEXT_MUTED);
+			g.drawText(font, "Doomscroll", panelX + 8, panelY + 7, LunarDraw.COLOR_TEXT_PRIMARY, false);
+			g.drawCenteredText(font, "Drag to move • Edges to resize", panelX + panelW / 2, footerTextY, LunarDraw.COLOR_TEXT_MUTED);
 		}
 
 		for (ClickArea btn : buttons) {
@@ -269,13 +255,13 @@ public final class DoomscrollingScreen extends Screen {
 		}
 	}
 
-	private void blitSignInBrowser(GuiGraphicsExtractor g, int x, int y, int w, int h, int accent) {
+	private void blitSignInBrowser(UiCanvas g, int x, int y, int w, int h, int accent) {
 		g.fill(x, y, x + w, y + h, 0xFF0F0F0F);
-		Identifier tex = controller.getTextureIdentifier();
+		Object tex = controller.getTextureIdentifier();
 		if (tex != null && controller.isBrowserTextureReady()) {
-			g.blit(RenderPipelines.GUI_TEXTURED, tex, x, y, 0.0f, 0.0f, w, h, w, h);
+			g.blitTexture(tex, x, y, w, h);
 		} else {
-			g.centeredText(font, "Loading Google Sign-In...", x + w / 2, y + h / 2 - 6, LunarDraw.COLOR_TEXT_SECONDARY);
+			g.drawCenteredText(font, "Loading Google Sign-In...", x + w / 2, y + h / 2 - 6, LunarDraw.COLOR_TEXT_SECONDARY);
 			LunarDraw.drawIndeterminateBar(g, x + w / 2 - 44, y + h / 2 + 8, 88, 3, accent);
 		}
 	}
@@ -292,15 +278,8 @@ public final class DoomscrollingScreen extends Screen {
 		return Math.round((float) ((my - modalY) / Math.max(1, modalH) * modalRenderH));
 	}
 
-	@Override
-	public boolean mouseClicked(MouseButtonEvent event, boolean isDoubleClick) {
-		if (super.mouseClicked(event, isDoubleClick)) {
-			return true;
-		}
-		double mx = event.x();
-		double my = event.y();
-
-		if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+	public boolean mouseClicked(double mx, double my, int button) {
+		if (button == InputConstants.MOUSE_BUTTON_LEFT) {
 			for (ClickArea btn : buttons) {
 				if (btn.contains(mx, my)) {
 					btn.action.run();
@@ -314,94 +293,78 @@ public final class DoomscrollingScreen extends Screen {
 				RinkuBrowser b = controller.browser();
 				b.setFocus(true);
 				browserMouseDown = true;
-				b.sendMousePress(toModalX(mx), toModalY(my), event.button());
+				b.sendMousePress(toModalX(mx), toModalY(my), button);
 				return true;
 			}
 			return false;
 		}
 
-		return hudRenderer.handleMouseClick(mx, my, event.button(), width, height, false, true);
+		return hudRenderer.handleMouseClick(mx, my, button, width, height, false, true);
 	}
 
-	@Override
-	public boolean mouseReleased(MouseButtonEvent event) {
+	public boolean mouseReleased(double mx, double my, int button) {
 		if (browserMouseDown && controller.browser() != null) {
 			browserMouseDown = false;
-			int bx = Math.max(0, Math.min(modalRenderW, toModalX(event.x())));
-			int by = Math.max(0, Math.min(modalRenderH, toModalY(event.y())));
-			controller.browser().sendMouseRelease(bx, by, event.button());
+			int bx = Math.max(0, Math.min(modalRenderW, toModalX(mx)));
+			int by = Math.max(0, Math.min(modalRenderH, toModalY(my)));
+			controller.browser().sendMouseRelease(bx, by, button);
 			return true;
 		}
 		if (hudRenderer.handleMouseRelease()) {
 			rebuildControls();
 			return true;
 		}
-		return super.mouseReleased(event);
+		return false;
 	}
 
-	@Override
-	public void mouseMoved(double mouseX, double mouseY) {
-		if (isInSignInModal(mouseX, mouseY) && controller.browser() != null) {
-			controller.browser().sendMouseMove(toModalX(mouseX), toModalY(mouseY));
+	public void mouseMoved(double mx, double my) {
+		if (isInSignInModal(mx, my) && controller.browser() != null) {
+			controller.browser().sendMouseMove(toModalX(mx), toModalY(my));
 		}
-		super.mouseMoved(mouseX, mouseY);
 	}
 
-	@Override
-	public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
-		if (signInModalOpen && isInSignInModal(event.x(), event.y()) && controller.browser() != null) {
-			controller.browser().sendMouseMove(toModalX(event.x()), toModalY(event.y()));
+	public boolean mouseDragged(double mx, double my) {
+		if (signInModalOpen && isInSignInModal(mx, my) && controller.browser() != null) {
+			controller.browser().sendMouseMove(toModalX(mx), toModalY(my));
 			return true;
 		}
-		if (!signInModalOpen && hudRenderer.handleMouseDrag(event.x(), event.y(), width, height)) {
-			return true;
-		}
-		return super.mouseDragged(event, dragX, dragY);
+		return !signInModalOpen && hudRenderer.handleMouseDrag(mx, my, width, height);
 	}
 
-	@Override
-	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
-		if (isInSignInModal(mouseX, mouseY) && controller.browser() != null) {
-			controller.browser().sendMouseWheel(toModalX(mouseX), toModalY(mouseY), scrollY, 0);
+	public boolean mouseScrolled(double mx, double my, double scrollY) {
+		if (isInSignInModal(mx, my) && controller.browser() != null) {
+			controller.browser().sendMouseWheel(toModalX(mx), toModalY(my), scrollY, 0);
 			return true;
 		}
-		if (!signInModalOpen && hudRenderer.handleMouseScroll(mouseX, mouseY, scrollY, width, height)) {
-			return true;
-		}
-		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+		return !signInModalOpen && hudRenderer.handleMouseScroll(mx, my, scrollY, width, height);
 	}
 
-	@Override
-	public boolean keyPressed(KeyEvent event) {
-		if (event.key() == GLFW.GLFW_KEY_ESCAPE) {
+	public boolean keyPressed(int key, int scancode, int modifiers, Object rawEvent) {
+		if (key == InputConstants.KEY_ESCAPE) {
 			onClose();
 			return true;
 		}
 		if (signInModalOpen && controller.browser() != null) {
 			controller.browser().setFocus(true);
-			controller.browser().sendKeyPress(event.key(), event.scancode(), event.modifiers());
+			McPlatform.get().sendKeyPress(controller.browser(), key, scancode, modifiers, rawEvent);
 			return true;
 		}
-		return super.keyPressed(event);
+		return false;
 	}
 
-	@Override
-	public boolean keyReleased(KeyEvent event) {
+	public boolean keyReleased(int key, int scancode, int modifiers, Object rawEvent) {
 		if (signInModalOpen && controller.browser() != null) {
-			controller.browser().sendKeyRelease(event.key(), event.scancode(), event.modifiers());
+			McPlatform.get().sendKeyRelease(controller.browser(), key, scancode, modifiers, rawEvent);
 			return true;
 		}
-		return super.keyReleased(event);
+		return false;
 	}
 
-	@Override
-	public boolean charTyped(CharacterEvent event) {
-		if (signInModalOpen && controller.browser() != null) {
-			if (event.codepoint() != 0) {
-				controller.browser().sendKeyTyped((char) event.codepoint(), 0);
-				return true;
-			}
+	public boolean charTyped(char ch) {
+		if (signInModalOpen && controller.browser() != null && ch != 0) {
+			controller.browser().sendKeyTyped(ch, 0);
+			return true;
 		}
-		return super.charTyped(event);
+		return false;
 	}
 }

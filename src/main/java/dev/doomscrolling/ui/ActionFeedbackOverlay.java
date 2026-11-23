@@ -1,12 +1,7 @@
 package dev.doomscrolling.ui;
 
-import com.mojang.blaze3d.platform.NativeImage;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.client.renderer.texture.DynamicTexture;
-import net.minecraft.resources.Identifier;
-import net.minecraft.util.Util;
+import dev.doomscrolling.platform.McPlatform;
+import dev.doomscrolling.platform.UiCanvas;
 
 public final class ActionFeedbackOverlay {
 
@@ -43,42 +38,42 @@ public final class ActionFeedbackOverlay {
 	};
 
 	private static boolean texturesCreated = false;
-	private static Identifier texPlay;
-	private static Identifier texPause;
-	private static Identifier texHeart;
-	private static Identifier texHeartOutline;
-	private static Identifier texChevronDown;
-	private static Identifier texChevronUp;
-	private static Identifier texVolumeOn;
-	private static Identifier texVolumeMuted;
-	private static Identifier texAutoOn;
-	private static Identifier texAutoOff;
-	private static Identifier texCaptionsOn;
-	private static Identifier texCaptionsOff;
+	private static Object texPlay;
+	private static Object texPause;
+	private static Object texHeart;
+	private static Object texHeartOutline;
+	private static Object texChevronDown;
+	private static Object texChevronUp;
+	private static Object texVolumeOn;
+	private static Object texVolumeMuted;
+	private static Object texAutoOn;
+	private static Object texAutoOff;
+	private static Object texCaptionsOn;
+	private static Object texCaptionsOff;
 
 	private volatile FeedbackType activeType = null;
 	private volatile long startedAtMs = 0L;
 
 	public void trigger(FeedbackType type) {
 		this.activeType = type;
-		this.startedAtMs = Util.getMillis();
+		this.startedAtMs = LunarDraw.nowMs();
 	}
 
-	public void renderLoadingEmblem(GuiGraphicsExtractor g, float cx, float cy, float size, int accentArgb, float alpha) {
+	public void renderLoadingEmblem(UiCanvas g, float cx, float cy, float size, int accentArgb, float alpha) {
 		if (alpha <= 0.01f) return;
 		ensureTextures();
-		float pulse = 1.0f + 0.06f * (float) Math.sin(Util.getMillis() / 260.0);
+		float pulse = 1.0f + 0.06f * (float) Math.sin(LunarDraw.nowMs() / 260.0);
 		float drawSize = size * pulse;
-		drawCenteredScaled(g, texPlay, cx, cy + 1.0f, drawSize * 1.08f, withAlpha(0x00000000, alpha * 0.45f));
-		drawCenteredScaled(g, texPlay, cx, cy, drawSize, withAlpha(accentArgb & 0x00FFFFFF, alpha));
+		g.blitCenteredScaled(texPlay, cx, cy + 1.0f, drawSize * 1.08f, withAlpha(0x00000000, alpha * 0.45f));
+		g.blitCenteredScaled(texPlay, cx, cy, drawSize, withAlpha(accentArgb & 0x00FFFFFF, alpha));
 	}
 
-	public void render(GuiGraphicsExtractor g, int centerX, int centerY, int maxDiameter, int accentArgb) {
+	public void render(UiCanvas g, int centerX, int centerY, int maxDiameter, int accentArgb) {
 		FeedbackType type = this.activeType;
 		if (type == null) {
 			return;
 		}
-		long elapsed = Util.getMillis() - startedAtMs;
+		long elapsed = LunarDraw.nowMs() - startedAtMs;
 		if (elapsed < 0L || elapsed >= type.durationMs) {
 			this.activeType = null;
 			return;
@@ -96,7 +91,7 @@ public final class ActionFeedbackOverlay {
 		float offsetY = computeOffsetY(type, t);
 		int baseSize = Math.max(22, Math.min(36, maxDiameter));
 
-		Identifier iconTex;
+		Object iconTex;
 		int iconColor;
 		float iconRatio;
 
@@ -167,8 +162,8 @@ public final class ActionFeedbackOverlay {
 		}
 
 		float drawSize = baseSize * iconRatio * scale;
-		drawCenteredScaled(g, iconTex, centerX, centerY + offsetY + 1.5f, drawSize * 1.06f, withAlpha(0x00000000, alpha * 0.55f));
-		drawCenteredScaled(g, iconTex, centerX, centerY + offsetY, drawSize, withAlpha(iconColor, alpha));
+		g.blitCenteredScaled(iconTex, centerX, centerY + offsetY + 1.5f, drawSize * 1.06f, withAlpha(0x00000000, alpha * 0.55f));
+		g.blitCenteredScaled(iconTex, centerX, centerY + offsetY, drawSize, withAlpha(iconColor, alpha));
 
 		if (type == FeedbackType.LIKE) {
 			float sizeScale = baseSize / 38.0f;
@@ -185,7 +180,7 @@ public final class ActionFeedbackOverlay {
 				float pScale = (0.6f + 0.5f * ease) * (1.0f - 0.25f * pt);
 				float pSize = p[2] * sizeScale * pScale;
 				if (pAlpha > 0.02f && pSize > 1.5f) {
-					drawCenteredScaled(g, texHeart, px, py, pSize, withAlpha(LunarDraw.COLOR_YT_RED & 0x00FFFFFF, pAlpha * 0.95f));
+					g.blitCenteredScaled(texHeart, px, py, pSize, withAlpha(LunarDraw.COLOR_YT_RED & 0x00FFFFFF, pAlpha * 0.95f));
 				}
 			}
 		}
@@ -249,17 +244,6 @@ public final class ActionFeedbackOverlay {
 		return 1.0f + c3 * xm1 * xm1 * xm1 + c1 * xm1 * xm1;
 	}
 
-	private static void drawCenteredScaled(GuiGraphicsExtractor g, Identifier tex, float cx, float cy, float size, int argbTint) {
-		if (tex == null || size <= 1.0f) return;
-		int base = 32;
-		float scale = size / (float) base;
-		g.pose().pushMatrix();
-		g.pose().translate(cx, cy);
-		g.pose().scale(scale, scale);
-		g.blit(RenderPipelines.GUI_TEXTURED, tex, -base / 2, -base / 2, 0.0f, 0.0f, base, base, base, base, argbTint);
-		g.pose().popMatrix();
-	}
-
 	private static int withAlpha(int rgb, float alpha) {
 		int a = Math.max(0, Math.min(255, Math.round(alpha * 255.0f)));
 		return (a << 24) | (rgb & 0x00FFFFFF);
@@ -288,23 +272,21 @@ public final class ActionFeedbackOverlay {
 		float eval(float x, float y);
 	}
 
-	private static Identifier registerSdfIcon(String name, SdfFunction sdf) {
-		NativeImage image = new NativeImage(ICON_SIZE, ICON_SIZE, true);
+	private static Object registerSdfIcon(String name, SdfFunction sdf) {
+		int[] pixels = new int[ICON_SIZE * ICON_SIZE];
 		float aaWidth = 2.6f / ICON_SIZE;
 		for (int py = 0; py < ICON_SIZE; py++) {
 			float ny = ((py + 0.5f) / ICON_SIZE) * 2.0f - 1.0f;
+			int row = py * ICON_SIZE;
 			for (int px = 0; px < ICON_SIZE; px++) {
 				float nx = ((px + 0.5f) / ICON_SIZE) * 2.0f - 1.0f;
 				float d = sdf.eval(nx, ny);
 				float cov = smoothstep(aaWidth, -aaWidth, d);
 				int a = Math.max(0, Math.min(255, Math.round(cov * 255.0f)));
-				image.setPixel(px, py, (a << 24) | 0x00FFFFFF);
+				pixels[row + px] = (a << 24) | 0x00FFFFFF;
 			}
 		}
-		Identifier id = Identifier.fromNamespaceAndPath("doomscrolling", name);
-		DynamicTexture tex = new DynamicTexture(() -> "doomscrolling_" + name, image);
-		Minecraft.getInstance().getTextureManager().register(id, tex);
-		return id;
+		return McPlatform.get().registerArgbTexture(name, ICON_SIZE, ICON_SIZE, pixels);
 	}
 
 	private static float smoothstep(float edge0, float edge1, float x) {

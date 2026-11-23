@@ -1,86 +1,75 @@
 plugins {
-	id 'net.fabricmc.fabric-loom' version "${loom_version}"
-	id 'maven-publish'
+    id 'java'
 }
 
-version = "${project.mod_version}+mc${project.minecraft_version}"
 group = project.maven_group
-
-base {
-	archivesName = project.archives_base_name
-}
+version = project.mod_version
 
 repositories {
-	exclusiveContent {
-		forRepository {
-			maven {
-				name = "Modrinth"
-				url = "https://api.modrinth.com/maven"
-			}
-		}
-		filter {
-			includeGroup "maven.modrinth"
-		}
-	}
-	mavenCentral()
+    mavenCentral()
 }
 
 dependencies {
-	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
-	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
-	implementation "maven.modrinth:rinku:${project.rinku_version}"
-
-	compileOnly "maven.modrinth:modmenu:${project.modmenu_version}"
-	runtimeOnly "maven.modrinth:modmenu:${project.modmenu_version}"
-
-	testImplementation "org.junit.jupiter:junit-jupiter-api:5.11.4"
-	testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:5.11.4"
-	testRuntimeOnly "org.junit.platform:junit-platform-launcher:1.11.4"
+    implementation 'com.google.code.gson:gson:2.11.0'
+    implementation 'org.slf4j:slf4j-api:2.0.16'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
-loom {
-	runs {
-		client {
-			client()
-			setConfigName("Fabric Client")
-			ideConfigGenerated(true)
-			runDir("run")
-		}
-	}
-}
-
-processResources {
-	inputs.property "version", project.version
-	inputs.property "minecraft_version", project.minecraft_version
-	inputs.property "loader_version", project.loader_version
-
-	filesMatching("fabric.mod.json") {
-		expand(
-			"version": project.version,
-			"minecraft_version": project.minecraft_version,
-			"loader_version": project.loader_version
-		)
-	}
-}
-
-tasks.withType(JavaCompile).configureEach {
-	it.options.release = 25
-	it.options.encoding = "UTF-8"
+sourceSets {
+    main {
+        java {
+            include 'dev/doomscrolling/browser/ShortsState.java'
+            include 'dev/doomscrolling/browser/YouTubeShortsBridge.java'
+            include 'dev/doomscrolling/config/DoomscrollingConfig.java'
+            include 'dev/doomscrolling/ui/HudBounds.java'
+        }
+        resources {
+            setSrcDirs([])
+        }
+    }
 }
 
 java {
-	sourceCompatibility = JavaVersion.VERSION_25
-	targetCompatibility = JavaVersion.VERSION_25
-	withSourcesJar()
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
 }
 
-tasks.withType(Test).configureEach {
-	useJUnitPlatform()
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+    options.encoding = 'UTF-8'
 }
 
-jar {
-	from("LICENSE") {
-		rename { "${it}_${project.base.archivesName.get()}" }
-	}
+test {
+    useJUnitPlatform()
+}
+
+def versionProjects = [
+    ':versions:26.3',
+    ':versions:26.2',
+    ':versions:26.1.2',
+    ':versions:1.21.11',
+    ':versions:1.21.1'
+]
+
+tasks.register('collectJars', Copy) {
+    dependsOn(versionProjects.collect { "${it}:build" })
+    into layout.buildDirectory.dir('libs')
+    versionProjects.each { path ->
+        def sub = project(path)
+        from(sub.layout.buildDirectory.dir('libs')) {
+            include '*.jar'
+            exclude '*-sources.jar'
+            exclude '*-dev.jar'
+        }
+    }
+}
+
+tasks.named('jar') {
+    enabled = false
+}
+
+tasks.named('build') {
+    dependsOn('collectJars')
 }

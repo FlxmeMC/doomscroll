@@ -1,8 +1,7 @@
 package dev.doomscrolling.ui;
 
+import dev.doomscrolling.platform.UiCanvas;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.util.Util;
 
 public final class LunarDraw {
 
@@ -22,7 +21,11 @@ public final class LunarDraw {
 	private LunarDraw() {
 	}
 
-	public static void drawGlassCard(GuiGraphicsExtractor g, int x, int y, int w, int h, int bgArgb, boolean highlightBorder) {
+	public static long nowMs() {
+		return System.nanoTime() / 1_000_000L;
+	}
+
+	public static void drawGlassCard(UiCanvas g, int x, int y, int w, int h, int bgArgb, boolean highlightBorder) {
 		g.fill(x + 2, y + 2, x + w + 2, y + h + 2, 0x3D000000);
 		g.fill(x, y, x + w, y + h, bgArgb);
 		int topBorder = highlightBorder ? COLOR_YT_RED : COLOR_BORDER_SUBTLE;
@@ -33,7 +36,7 @@ public final class LunarDraw {
 	}
 
 	public static void drawProgressBar(
-			GuiGraphicsExtractor g,
+			UiCanvas g,
 			int x,
 			int y,
 			int w,
@@ -54,11 +57,11 @@ public final class LunarDraw {
 		}
 	}
 
-	public static void drawIndeterminateBar(GuiGraphicsExtractor g, int x, int y, int w, int h, int accentArgb) {
+	public static void drawIndeterminateBar(UiCanvas g, int x, int y, int w, int h, int accentArgb) {
 		g.fill(x, y, x + w, y + h, COLOR_TRACK);
 		int segW = Math.max(18, w / 3);
 		int travel = w + segW;
-		int offset = (int) ((Util.getMillis() / 5L) % travel) - segW;
+		int offset = (int) ((nowMs() / 5L) % travel) - segW;
 		int start = Math.max(x, x + offset);
 		int end = Math.min(x + w, x + offset + segW);
 		if (end > start) {
@@ -67,7 +70,7 @@ public final class LunarDraw {
 	}
 
 	public static void drawMarqueeText(
-			GuiGraphicsExtractor g,
+			UiCanvas g,
 			Font font,
 			String text,
 			int x,
@@ -81,13 +84,13 @@ public final class LunarDraw {
 		}
 		int textW = font.width(text);
 		if (textW <= maxWidth) {
-			g.text(font, text, x, y, color, shadow);
+			g.drawText(font, text, x, y, color, shadow);
 			return;
 		}
 
 		int overflow = textW - maxWidth + 6;
 		long cycleMs = 4200L + overflow * 35L;
-		long phase = Util.getMillis() % cycleMs;
+		long phase = nowMs() % cycleMs;
 		int offsetPx;
 		if (phase < 1400L) {
 			offsetPx = 0;
@@ -101,11 +104,11 @@ public final class LunarDraw {
 		}
 
 		g.enableScissor(x, y - 1, x + maxWidth, y + font.lineHeight + 1);
-		g.text(font, text, x - offsetPx, y, color, shadow);
+		g.drawText(font, text, x - offsetPx, y, color, shadow);
 		g.disableScissor();
 	}
 
-	public static void drawOverlayIconButton(GuiGraphicsExtractor g, int x, int y, int size, boolean hovered, boolean active, int accentArgb) {
+	public static void drawOverlayIconButton(UiCanvas g, int x, int y, int size, boolean hovered, boolean active, int accentArgb) {
 		int bg = active ? withAlpha(accentArgb, 0xCC) : (hovered ? COLOR_OVERLAY_PILL_HOVER : COLOR_OVERLAY_PILL);
 		g.fill(x + 1, y, x + size - 1, y + size, bg);
 		g.fill(x, y + 1, x + size, y + size - 1, bg);
@@ -114,7 +117,7 @@ public final class LunarDraw {
 		}
 	}
 
-	public static void drawPrevIcon(GuiGraphicsExtractor g, int cx, int cy, int color) {
+	public static void drawPrevIcon(UiCanvas g, int cx, int cy, int color) {
 		g.fill(cx - 4, cy - 3, cx - 3, cy + 4, color);
 		g.fill(cx - 2, cy, cx - 1, cy + 1, color);
 		g.fill(cx - 1, cy - 1, cx, cy + 2, color);
@@ -122,7 +125,7 @@ public final class LunarDraw {
 		g.fill(cx + 1, cy - 3, cx + 2, cy + 4, color);
 	}
 
-	public static void drawNextIcon(GuiGraphicsExtractor g, int cx, int cy, int color) {
+	public static void drawNextIcon(UiCanvas g, int cx, int cy, int color) {
 		g.fill(cx - 2, cy - 3, cx - 1, cy + 4, color);
 		g.fill(cx - 1, cy - 2, cx, cy + 3, color);
 		g.fill(cx, cy - 1, cx + 1, cy + 2, color);
@@ -130,7 +133,7 @@ public final class LunarDraw {
 		g.fill(cx + 3, cy - 3, cx + 4, cy + 4, color);
 	}
 
-	public static void drawUpChevron(GuiGraphicsExtractor g, int cx, int cy, int color) {
+	public static void drawUpChevron(UiCanvas g, int cx, int cy, int color) {
 		g.fill(cx, cy - 2, cx + 1, cy - 1, color);
 		g.fill(cx - 1, cy - 1, cx + 2, cy, color);
 		g.fill(cx - 2, cy, cx - 1, cy + 1, color);
@@ -139,7 +142,7 @@ public final class LunarDraw {
 		g.fill(cx + 3, cy + 1, cx + 4, cy + 2, color);
 	}
 
-	public static void drawDownChevron(GuiGraphicsExtractor g, int cx, int cy, int color) {
+	public static void drawDownChevron(UiCanvas g, int cx, int cy, int color) {
 		g.fill(cx - 3, cy - 2, cx - 2, cy - 1, color);
 		g.fill(cx + 3, cy - 2, cx + 4, cy - 1, color);
 		g.fill(cx - 2, cy - 1, cx - 1, cy, color);
@@ -148,19 +151,19 @@ public final class LunarDraw {
 		g.fill(cx, cy + 1, cx + 1, cy + 2, color);
 	}
 
-	public static void drawPauseIcon(GuiGraphicsExtractor g, int cx, int cy, int color) {
+	public static void drawPauseIcon(UiCanvas g, int cx, int cy, int color) {
 		g.fill(cx - 3, cy - 3, cx - 1, cy + 4, color);
 		g.fill(cx + 1, cy - 3, cx + 3, cy + 4, color);
 	}
 
-	public static void drawPlayIcon(GuiGraphicsExtractor g, int cx, int cy, int color) {
+	public static void drawPlayIcon(UiCanvas g, int cx, int cy, int color) {
 		g.fill(cx - 2, cy - 3, cx - 1, cy + 4, color);
 		g.fill(cx - 1, cy - 2, cx, cy + 3, color);
 		g.fill(cx, cy - 1, cx + 1, cy + 2, color);
 		g.fill(cx + 1, cy, cx + 3, cy + 1, color);
 	}
 
-	public static void drawHeartIcon(GuiGraphicsExtractor g, int cx, int cy, int color) {
+	public static void drawHeartIcon(UiCanvas g, int cx, int cy, int color) {
 		g.fill(cx - 3, cy - 2, cx - 1, cy + 1, color);
 		g.fill(cx + 1, cy - 2, cx + 3, cy + 1, color);
 		g.fill(cx - 2, cy - 3, cx - 1, cy + 2, color);
@@ -169,7 +172,7 @@ public final class LunarDraw {
 		g.fill(cx, cy + 3, cx + 1, cy + 4, color);
 	}
 
-	public static void drawSpeakerIcon(GuiGraphicsExtractor g, int cx, int cy, boolean muted, int color) {
+	public static void drawSpeakerIcon(UiCanvas g, int cx, int cy, boolean muted, int color) {
 		g.fill(cx - 4, cy - 1, cx - 2, cy + 2, color);
 		g.fill(cx - 2, cy - 2, cx - 1, cy + 3, color);
 		g.fill(cx - 1, cy - 3, cx, cy + 4, color);
@@ -186,14 +189,14 @@ public final class LunarDraw {
 		}
 	}
 
-	public static void drawSettingsIcon(GuiGraphicsExtractor g, int cx, int cy, int color) {
+	public static void drawSettingsIcon(UiCanvas g, int cx, int cy, int color) {
 		g.fill(cx - 3, cy - 2, cx + 4, cy - 1, color);
 		g.fill(cx - 1, cy - 3, cx + 1, cy, color);
 		g.fill(cx - 3, cy + 1, cx + 4, cy + 2, color);
 		g.fill(cx + 1, cy, cx + 3, cy + 3, color);
 	}
 
-	public static void drawCaptionsIcon(GuiGraphicsExtractor g, int cx, int cy, boolean active, int color) {
+	public static void drawCaptionsIcon(UiCanvas g, int cx, int cy, boolean active, int color) {
 		g.fill(cx - 5, cy - 3, cx + 5, cy - 2, color);
 		g.fill(cx - 5, cy + 3, cx + 5, cy + 4, color);
 		g.fill(cx - 5, cy - 2, cx - 4, cy + 3, color);
@@ -208,7 +211,7 @@ public final class LunarDraw {
 	}
 
 	public static void drawLunarButton(
-			GuiGraphicsExtractor g,
+			UiCanvas g,
 			Font font,
 			int x,
 			int y,
@@ -230,7 +233,7 @@ public final class LunarDraw {
 		g.fill(x + w - 1, y, x + w, y + h, border);
 
 		int textY = y + (h - font.lineHeight) / 2 + 1;
-		g.centeredText(font, label, x + w / 2, textY, textColor);
+		g.drawCenteredText(font, label, x + w / 2, textY, textColor);
 	}
 
 	public static int withAlpha(int argb, int alpha) {

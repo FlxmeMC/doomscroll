@@ -1,19 +1,17 @@
 package dev.doomscrolling.ui;
 
-import com.mojang.blaze3d.platform.cursor.CursorType;
-import com.mojang.blaze3d.platform.cursor.CursorTypes;
+import com.mojang.blaze3d.platform.InputConstants;
 import dev.doomscrolling.DoomscrollingClient;
 import dev.doomscrolling.browser.ShortsBrowserController;
 import dev.doomscrolling.browser.ShortsState;
 import dev.doomscrolling.browser.YouTubeShortsBridge;
 import dev.doomscrolling.config.DoomscrollingConfig;
-import net.minecraft.client.DeltaTracker;
+import dev.doomscrolling.platform.McPlatform;
+import dev.doomscrolling.platform.UiCanvas;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.ChatScreen;
-import net.minecraft.client.renderer.RenderPipelines;
-import org.lwjgl.glfw.GLFW;
+import net.minecraft.client.gui.screens.Screen;
 
 public final class LunarHudRenderer {
 
@@ -21,9 +19,6 @@ public final class LunarHudRenderer {
 	private static final int OVERLAY_BTN_GAP = 3;
 	private static final int VOLUME_PILL_EXTRA_W = 58;
 	private static final int RESIZE_EDGE_HIT = 7;
-
-	private static CursorType cursorResizeNwse;
-	private static CursorType cursorResizeNesw;
 
 	private enum ResizeEdge {
 		NONE, LEFT, RIGHT, TOP, BOTTOM, TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT
@@ -64,19 +59,20 @@ public final class LunarHudRenderer {
 		activeResizeEdge = ResizeEdge.NONE;
 	}
 
-	public void renderHud(GuiGraphicsExtractor guiGraphics, DeltaTracker deltaTracker) {
+	public void renderHud(UiCanvas canvas) {
 		Minecraft mc = Minecraft.getInstance();
 		if (!controller.config().hudVisible) {
 			return;
 		}
-		if (mc.gui.screen() instanceof DoomscrollingScreen || mc.gui.screen() instanceof ChatScreen) {
+		Screen current = McPlatform.get().currentScreen(mc);
+		if (McPlatform.get().isOverlayScreen(current) || current instanceof ChatScreen) {
 			return;
 		}
-		renderCard(guiGraphics, mc.font, guiGraphics.guiWidth(), guiGraphics.guiHeight(), -1, -1, false, false, false);
+		renderCard(canvas, mc.font, canvas.guiWidth(), canvas.guiHeight(), -1, -1, false, false, false);
 	}
 
 	public HudBounds renderCard(
-			GuiGraphicsExtractor g,
+			UiCanvas g,
 			Font font,
 			int screenWidth,
 			int screenHeight,
@@ -117,7 +113,7 @@ public final class LunarHudRenderer {
 	}
 
 	private void renderShortsOverlayCard(
-			GuiGraphicsExtractor g,
+			UiCanvas g,
 			Font font,
 			HudBounds b,
 			ShortsState state,
@@ -160,7 +156,7 @@ public final class LunarHudRenderer {
 	}
 
 	private void renderVideoOverlayControls(
-			GuiGraphicsExtractor g,
+			UiCanvas g,
 			Font font,
 			HudBounds b,
 			ShortsState state,
@@ -175,7 +171,7 @@ public final class LunarHudRenderer {
 		int tsW = font.width(ts) + 8;
 		int topY = b.videoY() + 4;
 		g.fill(b.videoX() + 4, topY, b.videoX() + 4 + tsW, topY + 12, LunarDraw.COLOR_OVERLAY_PILL);
-		g.text(font, ts, b.videoX() + 8, topY + 2, LunarDraw.COLOR_TEXT_PRIMARY, false);
+		g.drawText(font, ts, b.videoX() + 8, topY + 2, LunarDraw.COLOR_TEXT_PRIMARY, false);
 
 		int btnX = rightButtonX(b);
 		int[] ys = rightButtonYs(b);
@@ -232,7 +228,7 @@ public final class LunarHudRenderer {
 	}
 
 	private void drawYouTubeVolumePill(
-			GuiGraphicsExtractor g,
+			UiCanvas g,
 			int x,
 			int y,
 			int w,
@@ -269,7 +265,7 @@ public final class LunarHudRenderer {
 	}
 
 	private void renderCompactMiniCard(
-			GuiGraphicsExtractor g,
+			UiCanvas g,
 			Font font,
 			HudBounds b,
 			ShortsState state,
@@ -345,12 +341,12 @@ public final class LunarHudRenderer {
 		int timeY = barY + 6;
 		String toast = controller.activeToast();
 		if (toast != null) {
-			g.text(font, toast, fx, timeY, accent, false);
+			g.drawText(font, toast, fx, timeY, accent, false);
 		} else {
-			g.text(font, ShortsState.formatTimestamp(currentTime), fx, timeY, LunarDraw.COLOR_TEXT_SECONDARY, false);
+			g.drawText(font, ShortsState.formatTimestamp(currentTime), fx, timeY, LunarDraw.COLOR_TEXT_SECONDARY, false);
 		}
 		String dur = ShortsState.formatTimestamp(state.durationSec());
-		g.text(font, dur, fx + fw - font.width(dur), timeY, LunarDraw.COLOR_TEXT_SECONDARY, false);
+		g.drawText(font, dur, fx + fw - font.width(dur), timeY, LunarDraw.COLOR_TEXT_SECONDARY, false);
 
 		controller.feedback().render(
 				g,
@@ -361,19 +357,21 @@ public final class LunarHudRenderer {
 		);
 	}
 
-	private void renderEditorHandles(GuiGraphicsExtractor g, Font font, HudBounds b, int mouseX, int mouseY, int accent) {
+	private void renderEditorHandles(UiCanvas g, Font font, HudBounds b, int mouseX, int mouseY, int accent) {
 		ResizeEdge hoverEdge = activeResizeEdge != ResizeEdge.NONE ? activeResizeEdge : detectResizeEdge(b, mouseX, mouseY);
 		int edgeIdle = 0x55FFFFFF;
 		int cornerLen = 8;
 
 		switch (hoverEdge) {
-			case LEFT, RIGHT -> g.requestCursor(CursorTypes.RESIZE_EW);
-			case TOP, BOTTOM -> g.requestCursor(CursorTypes.RESIZE_NS);
-			case TOP_LEFT, BOTTOM_RIGHT -> g.requestCursor(getResizeNwseCursor());
-			case TOP_RIGHT, BOTTOM_LEFT -> g.requestCursor(getResizeNeswCursor());
+			case LEFT, RIGHT -> g.requestCursor(UiCanvas.CursorKind.EW);
+			case TOP, BOTTOM -> g.requestCursor(UiCanvas.CursorKind.NS);
+			case TOP_LEFT, BOTTOM_RIGHT -> g.requestCursor(UiCanvas.CursorKind.NWSE);
+			case TOP_RIGHT, BOTTOM_LEFT -> g.requestCursor(UiCanvas.CursorKind.NESW);
 			case NONE -> {
 				if (draggingHud) {
-					g.requestCursor(CursorTypes.RESIZE_ALL);
+					g.requestCursor(UiCanvas.CursorKind.MOVE);
+				} else {
+					g.requestCursor(UiCanvas.CursorKind.DEFAULT);
 				}
 			}
 		}
@@ -397,11 +395,11 @@ public final class LunarHudRenderer {
 			int by = b.y() > 18 ? (b.y() - 15) : (b.y() + b.height() + 4);
 			g.fill(bx, by, bx + bw, by + 12, 0xE80F0F0F);
 			g.outline(bx, by, bw, 12, accent);
-			g.centeredText(font, badge, bx + bw / 2, by + 2, LunarDraw.COLOR_TEXT_PRIMARY);
+			g.drawCenteredText(font, badge, bx + bw / 2, by + 2, LunarDraw.COLOR_TEXT_PRIMARY);
 		}
 	}
 
-	private static void drawCornerHandle(GuiGraphicsExtractor g, int cx, int cy, int len, boolean right, boolean down, int color) {
+	private static void drawCornerHandle(UiCanvas g, int cx, int cy, int len, boolean right, boolean down, int color) {
 		int x1 = right ? cx : cx - len;
 		int x2 = right ? cx + len : cx;
 		int y1 = down ? cy : cy - 2;
@@ -415,29 +413,26 @@ public final class LunarHudRenderer {
 		g.fill(vx1, vy1, vx2, vy2, color);
 	}
 
-	private void renderVideoSurface(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, int accent) {
+	private void renderVideoSurface(UiCanvas g, Font font, int x, int y, int w, int h, int accent) {
 		g.fill(x, y, x + w, y + h, 0xFF0F0F0F);
 
 		if (controller.isRinkuInitFailed()) {
 			if (w >= 64) {
-				g.centeredText(font, "Restart MC", x + w / 2, y + h / 2 - 4, accent);
-				g.centeredText(font, "(cache busy)", x + w / 2, y + h / 2 + 8, LunarDraw.COLOR_TEXT_MUTED);
+				g.drawCenteredText(font, "Restart MC", x + w / 2, y + h / 2 - 4, accent);
+				g.drawCenteredText(font, "(cache busy)", x + w / 2, y + h / 2 + 8, LunarDraw.COLOR_TEXT_MUTED);
 			} else {
 				LunarDraw.drawPlayIcon(g, x + w / 2, y + h / 2, accent);
 			}
 			return;
 		}
 
-		boolean texReady = controller.getTextureIdentifier() != null && controller.isBrowserTextureReady();
+		Object tex = controller.getTextureIdentifier();
+		boolean texReady = tex != null && controller.isBrowserTextureReady();
 		boolean firstLoaded = controller.isFirstShortLoaded();
 		float overlayAlpha = controller.loadingOverlayAlpha();
 
 		if (texReady && firstLoaded) {
-			g.blit(
-					RenderPipelines.GUI_TEXTURED,
-					controller.getTextureIdentifier(),
-					x, y, 0.0f, 0.0f, w, h, w, h
-			);
+			g.blitTexture(tex, x, y, w, h);
 		}
 
 		if (!texReady || overlayAlpha > 0.01f) {
@@ -456,12 +451,12 @@ public final class LunarHudRenderer {
 					LunarDraw.drawIndeterminateBar(g, cx - barW / 2, cy + 12, barW, 2, LunarDraw.withAlpha(accent, bgAlpha));
 				}
 				int labelAlpha = Math.max(0, Math.min(255, Math.round(a * 170.0f)));
-				g.centeredText(font, "Loading Shorts", cx, cy + 20, (labelAlpha << 24) | 0xAAAAAA);
+				g.drawCenteredText(font, "Loading Shorts", cx, cy + 20, (labelAlpha << 24) | 0xAAAAAA);
 			}
 		}
 	}
 
-	private void renderToastOverlay(GuiGraphicsExtractor g, Font font, int x, int y, int w, int accent) {
+	private void renderToastOverlay(UiCanvas g, Font font, int x, int y, int w, int accent) {
 		String toast = controller.activeToast();
 		if (toast == null || toast.isEmpty()) {
 			return;
@@ -470,7 +465,7 @@ public final class LunarHudRenderer {
 		int tx = x + (w - tw) / 2;
 		g.fill(tx, y, tx + tw, y + 13, 0xD80F0F0F);
 		g.fill(tx, y + 12, tx + tw, y + 13, accent);
-		g.centeredText(font, toast, x + w / 2, y + 2, LunarDraw.COLOR_TEXT_PRIMARY);
+		g.drawCenteredText(font, toast, x + w / 2, y + 2, LunarDraw.COLOR_TEXT_PRIMARY);
 	}
 
 	public boolean handleMouseClick(
@@ -482,7 +477,7 @@ public final class LunarHudRenderer {
 			boolean allowOpenSettings,
 			boolean editorMode
 	) {
-		if (!controller.config().hudVisible || button != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+		if (!controller.config().hudVisible || button != InputConstants.MOUSE_BUTTON_LEFT) {
 			return false;
 		}
 		HudBounds b = HudBounds.compute(controller.config(), screenWidth, screenHeight);
@@ -604,7 +599,7 @@ public final class LunarHudRenderer {
 		}
 		if (!editorMode && inBox(mx, my, btnX, ys[6], OVERLAY_BTN_SIZE)) {
 			if (allowOpenSettings) {
-				Minecraft.getInstance().gui.setScreen(DoomscrollingClient.createScreen(null));
+				McPlatform.get().setScreen(Minecraft.getInstance(), DoomscrollingClient.createScreen(null));
 			}
 			return true;
 		}
@@ -773,22 +768,6 @@ public final class LunarHudRenderer {
 			ys[i] = startY + i * (OVERLAY_BTN_SIZE + OVERLAY_BTN_GAP);
 		}
 		return ys;
-	}
-
-	private static CursorType getResizeNwseCursor() {
-		if (cursorResizeNwse == null) {
-			cursorResizeNwse = CursorType.createStandardCursor(
-					GLFW.GLFW_RESIZE_NWSE_CURSOR, "doomscrolling_nwse", CursorTypes.RESIZE_ALL);
-		}
-		return cursorResizeNwse;
-	}
-
-	private static CursorType getResizeNeswCursor() {
-		if (cursorResizeNesw == null) {
-			cursorResizeNesw = CursorType.createStandardCursor(
-					GLFW.GLFW_RESIZE_NESW_CURSOR, "doomscrolling_nesw", CursorTypes.RESIZE_ALL);
-		}
-		return cursorResizeNesw;
 	}
 
 	private static boolean inBox(double mx, double my, int x, int y, int size) {

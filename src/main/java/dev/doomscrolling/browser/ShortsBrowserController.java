@@ -3,10 +3,10 @@ package dev.doomscrolling.browser;
 import de.keksuccino.rinku.Rinku;
 import de.keksuccino.rinku.RinkuBrowser;
 import dev.doomscrolling.config.DoomscrollingConfig;
+import dev.doomscrolling.platform.McPlatform;
 import dev.doomscrolling.ui.ActionFeedbackOverlay;
+import dev.doomscrolling.ui.LunarDraw;
 import net.minecraft.client.Minecraft;
-import net.minecraft.resources.Identifier;
-import net.minecraft.util.Util;
 import org.cef.CefSettings;
 import org.cef.browser.CefBrowser;
 import org.cef.browser.CefFrame;
@@ -91,7 +91,7 @@ public final class ShortsBrowserController {
 		if (!firstShortLoaded) {
 			return 1.0f;
 		}
-		long elapsed = Util.getMillis() - firstShortLoadedAtMs;
+		long elapsed = LunarDraw.nowMs() - firstShortLoadedAtMs;
 		if (elapsed >= 280L) {
 			return 0.0f;
 		}
@@ -102,15 +102,15 @@ public final class ShortsBrowserController {
 	private void resetInitialLoadingGate() {
 		firstShortLoaded = false;
 		firstShortLoadedAtMs = 0L;
-		loadingStartedAtMs = Util.getMillis();
+		loadingStartedAtMs = LunarDraw.nowMs();
 	}
 
-	public Identifier getTextureIdentifier() {
-		return browser != null ? browser.getTextureIdentifier() : null;
+	public Object getTextureIdentifier() {
+		return browser != null ? McPlatform.get().getBrowserTexture(browser) : null;
 	}
 
 	public String activeToast() {
-		if (toastMessage == null || toastMessage.isEmpty() || Util.getMillis() > toastExpiresAtMs) {
+		if (toastMessage == null || toastMessage.isEmpty() || LunarDraw.nowMs() > toastExpiresAtMs) {
 			return null;
 		}
 		return toastMessage;
@@ -118,7 +118,7 @@ public final class ShortsBrowserController {
 
 	public void showToast(String message) {
 		this.toastMessage = message == null ? "" : message;
-		this.toastExpiresAtMs = Util.getMillis() + TOAST_DURATION_MS;
+		this.toastExpiresAtMs = LunarDraw.nowMs() + TOAST_DURATION_MS;
 	}
 
 	public void tick(Minecraft minecraft, boolean overlayOpen) {
@@ -146,7 +146,7 @@ public final class ShortsBrowserController {
 		}
 		applyFpsCap(config.browserFps);
 
-		long now = Util.getMillis();
+		long now = LunarDraw.nowMs();
 		if (now - lastPeriodicReinjectMs > 4000L && !browser.isLoading()) {
 			lastPeriodicReinjectMs = now;
 			injectBridgeIfMissing();
@@ -229,7 +229,7 @@ public final class ShortsBrowserController {
 							state.set(parsed);
 							if (!firstShortLoaded && (parsed.videoReady() || parsed.botGateDetected())) {
 								firstShortLoaded = true;
-								firstShortLoadedAtMs = Util.getMillis();
+								firstShortLoadedAtMs = LunarDraw.nowMs();
 							}
 						}
 						return true;
