@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "doomscrolling",
+  "version": "${version}",
+  "name": "Doomscrolling",
+  "description": "Lightweight local YouTube Shorts player for Minecraft with keybind scrolling, autoscroll, chat mouse controls, subtitles, and zero FPS impact.",
+  "authors": [
+    "xFlxme"
+  ],
+  "contact": {
+    "homepage": "https://modrinth.com/mod/doomscrolling",
+    "sources": "https://github.com/FlxmeMC/doomscroll",
+    "issues": "https://github.com/FlxmeMC/doomscroll/issues"
+  },
+  "license": "MIT",
+  "icon": "assets/doomscrolling/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.doomscrolling.DoomscrollingClient"
+    ],
+    "modmenu": [
+      "dev.doomscrolling.compat.ModMenuIntegration"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "minecraft": "~${minecraft_version}",
+    "java": ">=25",
+    "fabric-api": "*",
+    "rinku": ">=3.0.0"
+  },
+  "suggests": {
+    "modmenu": "*"
+  }
+}
