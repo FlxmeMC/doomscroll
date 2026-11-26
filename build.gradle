@@ -19,9 +19,12 @@ dependencies {
 sourceSets {
     main {
         java {
+            include 'dev/doomscrolling/browser/CommentsState.java'
             include 'dev/doomscrolling/browser/ShortsState.java'
+            include 'dev/doomscrolling/browser/InstagramReelsBridge.java'
             include 'dev/doomscrolling/browser/YouTubeShortsBridge.java'
             include 'dev/doomscrolling/config/DoomscrollingConfig.java'
+            include 'dev/doomscrolling/ui/CommentsLayout.java'
             include 'dev/doomscrolling/ui/HudBounds.java'
         }
         resources {

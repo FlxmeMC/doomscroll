@@ -32,7 +32,10 @@ public final class ShortsBrowserController {
 
 	private final DoomscrollingConfig config;
 	private final AtomicReference<ShortsState> state = new AtomicReference<>(ShortsState.INITIAL);
+	private final AtomicReference<CommentsState> commentsState = new AtomicReference<>(CommentsState.CLOSED);
 	private final ActionFeedbackOverlay feedbackOverlay = new ActionFeedbackOverlay();
+	private volatile boolean commentsOpen = false;
+	private volatile int commentsOpenGeneration = 0;
 
 	private RinkuBrowser browser;
 	private CefDisplayHandler displayHandler;
@@ -59,6 +62,7 @@ public final class ShortsBrowserController {
 
 	public ShortsBrowserController(DoomscrollingConfig config) {
 		this.config = config;
+		this.state.set(ShortsState.initialFor(config.platform));
 	}
 
 	public DoomscrollingConfig config() {
@@ -67,6 +71,19 @@ public final class ShortsBrowserController {
 
 	public ShortsState state() {
 		return state.get();
+	}
+
+	public CommentsState commentsState() {
+		return commentsState.get();
+	}
+
+	public boolean isCommentsOpen() {
+		return commentsOpen;
+	}
+
+	/** Increments every time comments are opened, so the panel can reset per open. */
+	public int commentsOpenGeneration() {
+		return commentsOpenGeneration;
 	}
 
 	public ActionFeedbackOverlay feedback() {
@@ -198,7 +215,8 @@ public final class ShortsBrowserController {
 		try {
 			int initialW = config.qualityPreset.width();
 			int initialH = config.qualityPreset.height();
-			browser = Rinku.createBrowser(config.startUrl, false, initialW, initialH);
+			String startUrl = config.effectiveStartUrl();
+			browser = Rinku.createBrowser(startUrl, false, initialW, initialH);
 			browser.useBrowserControls(false);
 			resetInitialLoadingGate();
 			currentBrowserWidth = initialW;
@@ -206,7 +224,7 @@ public final class ShortsBrowserController {
 			applyFpsCap(config.browserFps);
 			browser.setAudioMuted(config.muted);
 			registerHandlers(minecraft);
-			state.set(ShortsState.INITIAL.withUrl(config.startUrl, true));
+			state.set(ShortsState.initialFor(config.platform).withUrl(startUrl, true));
 		} catch (Throwable t) {
 			LOGGER.error("Failed to create Doomscrolling browser", t);
 		}
@@ -242,6 +260,15 @@ public final class ShortsBrowserController {
 							if (!firstShortLoaded && (parsed.videoReady() || parsed.botGateDetected())) {
 								firstShortLoaded = true;
 								firstShortLoadedAtMs = LunarDraw.nowMs();
+							}
+						}
+						return true;
+					}
+					if (message.startsWith(YouTubeShortsBridge.COMMENTS_PREFIX)) {
+						if (commentsOpen) {
+							CommentsState parsedComments = YouTubeShortsBridge.parseCommentsMessage(message);
+							if (parsedComments != null && parsedComments.open()) {
+								commentsState.set(parsedComments);
 							}
 						}
 						return true;
@@ -393,6 +420,13 @@ public final class ShortsBrowserController {
 				config.muted,
 				config.subtitles
 		));
+		resyncCommentsIfOpen();
+	}
+
+	private void resyncCommentsIfOpen() {
+		if (commentsOpen) {
+			executeJs(YouTubeShortsBridge.buildCommentsResyncScript());
+		}
 	}
 
 	private void injectBridgeIfMissing() {
@@ -409,6 +443,7 @@ public final class ShortsBrowserController {
 				config.subtitles
 		);
 		executeJs("if(!window.__doomscrolling){" + bootstrap + "}");
+		resyncCommentsIfOpen();
 	}
 
 	public void syncBridgeConfig() {
@@ -433,9 +468,27 @@ public final class ShortsBrowserController {
 		if (config.hudVisible) {
 			ensureBrowserCreated(Minecraft.getInstance());
 			if (suspended) resumeBrowser();
-		} else if (config.pauseWhenHidden) {
-			suspendBrowser();
+		} else {
+			setCommentsOpen(false);
+			if (config.pauseWhenHidden) {
+				suspendBrowser();
+			}
 		}
+	}
+
+	public void toggleComments() {
+		setCommentsOpen(!commentsOpen);
+	}
+
+	public void setCommentsOpen(boolean open) {
+		if (open == commentsOpen) return;
+		if (open && !ensureReadyForAction()) return;
+		commentsOpen = open;
+		if (open) {
+			commentsOpenGeneration++;
+		}
+		commentsState.set(open ? CommentsState.loadingFor(state.get().videoId()) : CommentsState.CLOSED);
+		executeJs(YouTubeShortsBridge.buildSetCommentsOpenScript(open));
 	}
 
 	public void nextShort() {
@@ -529,13 +582,46 @@ public final class ShortsBrowserController {
 		}
 	}
 
+	public void setPlatform(DoomscrollingConfig.FeedPlatform platform) {
+		if (platform == null || config.platform == platform) {
+			return;
+		}
+		config.platform = platform;
+		config.startUrl = platform.feedUrl();
+		config.save();
+		userPausedBeforeSuspend = false;
+		resetInitialLoadingGate();
+		state.set(ShortsState.initialFor(platform));
+		if (commentsOpen) {
+			commentsState.set(CommentsState.loadingFor(""));
+		}
+		showToast(platform.displayName());
+		if (browser != null) {
+			if (suspended) {
+				resumeBrowser();
+			}
+			browser.loadURL(platform.feedUrl());
+		}
+	}
+
+	public void cyclePlatform() {
+		DoomscrollingConfig.FeedPlatform current = config.platform != null
+				? config.platform
+				: DoomscrollingConfig.FeedPlatform.YOUTUBE_SHORTS;
+		setPlatform(current.next());
+	}
+
 	public void openSignInPage() {
-		navigateTo(DoomscrollingConfig.GOOGLE_SIGNIN_URL);
+		DoomscrollingConfig.FeedPlatform active = config.platform != null
+				? config.platform
+				: DoomscrollingConfig.FeedPlatform.YOUTUBE_SHORTS;
+		navigateTo(active.signInUrl());
 	}
 
 	public void openShortsFeed() {
 		resetInitialLoadingGate();
-		navigateTo(config.startUrl);
+		state.set(ShortsState.initialFor(config.platform));
+		navigateTo(config.effectiveStartUrl());
 	}
 
 	public void reloadPage() {

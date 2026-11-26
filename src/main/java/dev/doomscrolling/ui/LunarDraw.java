@@ -210,6 +210,22 @@ public final class LunarDraw {
 		}
 	}
 
+	public static void drawCommentIcon(UiCanvas g, int cx, int cy, int color) {
+		// Rounded speech bubble outline with 2 subtle text lines and tail
+		g.fill(cx - 4, cy - 3, cx + 4, cy - 2, color);
+		g.fill(cx - 4, cy + 2, cx - 1, cy + 3, color);
+		g.fill(cx + 1, cy + 2, cx + 4, cy + 3, color);
+		g.fill(cx - 5, cy - 2, cx - 4, cy + 2, color);
+		g.fill(cx + 4, cy - 2, cx + 5, cy + 2, color);
+		// Tail
+		g.fill(cx - 2, cy + 3, cx - 1, cy + 4, color);
+		g.fill(cx - 1, cy + 3, cx, cy + 4, color);
+		g.fill(cx, cy + 2, cx + 1, cy + 3, color);
+		// Inner text lines
+		g.fill(cx - 3, cy - 1, cx + 3, cy, color);
+		g.fill(cx - 3, cy + 1, cx + 1, cy + 2, color);
+	}
+
 	public static void drawLunarButton(
 			UiCanvas g,
 			Font font,

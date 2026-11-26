@@ -85,18 +85,18 @@ public final class OverlayScreenLogic {
 		int headerH = 24;
 		int maxW = Math.max(220, width - 32);
 		int maxH = Math.max(180, height - 32 - headerH);
-		modalW = Math.min(340, maxW);
-		modalH = Math.min(410, maxH);
+		modalW = Math.min(380, maxW);
+		modalH = Math.min(420, maxH);
 		modalX = (width - modalW) / 2;
 		modalY = (height - (modalH + headerH)) / 2 + headerH;
 
 		float scale = minecraft != null
 				? Math.max(1.0f, Math.min(1.5f, (float) minecraft.getWindow().getGuiScale()))
 				: 1.0f;
-		if (modalW * scale > 720) scale = 720.0f / modalW;
-		if (modalH * scale > 780) scale = 780.0f / modalH;
-		modalRenderW = Math.max(300, Math.round(modalW * scale));
-		modalRenderH = Math.max(240, Math.round(modalH * scale));
+		if (modalW * scale > 760) scale = 760.0f / modalW;
+		if (modalH * scale > 800) scale = 800.0f / modalH;
+		modalRenderW = Math.max(360, Math.round(modalW * scale));
+		modalRenderH = Math.max(260, Math.round(modalH * scale));
 		controller.setSurfaceMode(ShortsBrowserController.SurfaceMode.SIGN_IN, modalRenderW, modalRenderH);
 	}
 
@@ -111,16 +111,19 @@ public final class OverlayScreenLogic {
 		}
 
 		DoomscrollingConfig cfg = controller.config();
+		DoomscrollingConfig.FeedPlatform activePlatform = cfg.platform != null
+				? cfg.platform
+				: DoomscrollingConfig.FeedPlatform.YOUTUBE_SHORTS;
 		ShortsState st = controller.state();
 		boolean compact = height < 260;
-		int btnH = compact ? 17 : 20;
-		int gap = compact ? 4 : 5;
+		int btnH = compact ? 16 : 20;
+		int gap = compact ? 3 : 5;
 		boolean showSignInBtn = !st.signedIn();
 
 		panelW = Math.min(204, Math.max(182, width / 2 - 24));
-		int rows = showSignInBtn ? 6 : 5;
+		int rows = showSignInBtn ? 7 : 6;
 		int buttonsBlockH = rows * btnH + (rows - 1) * gap + (showSignInBtn ? 1 : 0);
-		int footerBandH = 22;
+		int footerBandH = compact ? 18 : 22;
 		panelH = 23 + buttonsBlockH + footerBandH;
 
 		boolean hudOnRight = cfg.posX >= 0.45f;
@@ -139,8 +142,19 @@ public final class OverlayScreenLogic {
 		int halfW = (iw - 4) / 2;
 		int y = panelY + 23;
 
+		buttons.add(new ClickArea(ix, y, halfW, btnH, () -> {
+			controller.setPlatform(DoomscrollingConfig.FeedPlatform.YOUTUBE_SHORTS);
+			rebuildControls();
+		}, "YouTube", activePlatform == DoomscrollingConfig.FeedPlatform.YOUTUBE_SHORTS));
+
+		buttons.add(new ClickArea(ix + halfW + 4, y, iw - halfW - 4, btnH, () -> {
+			controller.setPlatform(DoomscrollingConfig.FeedPlatform.INSTAGRAM_REELS);
+			rebuildControls();
+		}, "Instagram", activePlatform == DoomscrollingConfig.FeedPlatform.INSTAGRAM_REELS));
+		y += btnH + gap;
+
 		if (showSignInBtn) {
-			buttons.add(new ClickArea(ix, y, iw, btnH, this::openSignInModal, "Sign in to YouTube", true));
+			buttons.add(new ClickArea(ix, y, iw, btnH, this::openSignInModal, "Sign in to " + activePlatform.shortName(), true));
 			y += btnH + gap + 1;
 		}
 
@@ -161,7 +175,7 @@ public final class OverlayScreenLogic {
 			cfg.layoutMode = cfg.layoutMode.next();
 			controller.applySettingsChanged();
 			rebuildControls();
-		}, "View: " + cfg.layoutMode.displayName(), false));
+		}, "View: " + cfg.layoutModeDisplayName(), false));
 
 		buttons.add(new ClickArea(ix + halfW + 4, y, iw - halfW - 4, btnH, () -> {
 			cfg.accentTheme = cfg.accentTheme.next();
@@ -234,12 +248,15 @@ public final class OverlayScreenLogic {
 
 	public void render(UiCanvas g, int mouseX, int mouseY) {
 		int accent = controller.config().accentTheme.argb();
+		DoomscrollingConfig.FeedPlatform activePlatform = controller.config().platform != null
+				? controller.config().platform
+				: DoomscrollingConfig.FeedPlatform.YOUTUBE_SHORTS;
 
 		if (signInModalOpen) {
 			int headerH = 24;
 			LunarDraw.drawGlassCard(g, modalX - 2, modalY - headerH, modalW + 4, modalH + headerH + 2, 0xF20F0F0F, false);
-			g.drawCenteredText(font, "Sign in to YouTube", modalX + modalW / 2, modalY - 17, LunarDraw.COLOR_TEXT_PRIMARY);
-			blitSignInBrowser(g, modalX, modalY, modalW, modalH, accent);
+			g.drawCenteredText(font, "Sign in to " + activePlatform.shortName(), modalX + modalW / 2, modalY - 17, LunarDraw.COLOR_TEXT_PRIMARY);
+			blitSignInBrowser(g, modalX, modalY, modalW, modalH, accent, activePlatform);
 		} else {
 			if (controller.config().hudVisible) {
 				hudRenderer.renderCard(g, font, width, height, mouseX, mouseY, true, true, true);
@@ -255,13 +272,14 @@ public final class OverlayScreenLogic {
 		}
 	}
 
-	private void blitSignInBrowser(UiCanvas g, int x, int y, int w, int h, int accent) {
+	private void blitSignInBrowser(UiCanvas g, int x, int y, int w, int h, int accent, DoomscrollingConfig.FeedPlatform platform) {
 		g.fill(x, y, x + w, y + h, 0xFF0F0F0F);
 		Object tex = controller.getTextureIdentifier();
 		if (tex != null && controller.isBrowserTextureReady()) {
 			g.blitTexture(tex, x, y, w, h);
 		} else {
-			g.drawCenteredText(font, "Loading Google Sign-In...", x + w / 2, y + h / 2 - 6, LunarDraw.COLOR_TEXT_SECONDARY);
+			String provider = platform == DoomscrollingConfig.FeedPlatform.INSTAGRAM_REELS ? "Instagram" : "Google";
+			g.drawCenteredText(font, "Loading " + provider + " Sign-In...", x + w / 2, y + h / 2 - 6, LunarDraw.COLOR_TEXT_SECONDARY);
 			LunarDraw.drawIndeterminateBar(g, x + w / 2 - 44, y + h / 2 + 8, 88, 3, accent);
 		}
 	}
