@@ -21,6 +21,72 @@ public final class DoomscrollingConfig {
 	public static final String DEFAULT_SHORTS_URL = "https://www.youtube.com/shorts";
 	public static final String GOOGLE_SIGNIN_URL =
 			"https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fwww.youtube.com%2Fshorts";
+	public static final String DEFAULT_REELS_URL = "https://www.instagram.com/reels/";
+	public static final String INSTAGRAM_SIGNIN_URL =
+			"https://www.instagram.com/accounts/login/?next=%2Freels%2F";
+
+	public enum FeedPlatform {
+		YOUTUBE_SHORTS(
+				"YouTube",
+				"YouTube Shorts",
+				"Shorts",
+				DEFAULT_SHORTS_URL,
+				GOOGLE_SIGNIN_URL
+		),
+		INSTAGRAM_REELS(
+				"Instagram",
+				"Instagram Reels",
+				"Reels",
+				DEFAULT_REELS_URL,
+				INSTAGRAM_SIGNIN_URL
+		);
+
+		private final String shortName;
+		private final String displayName;
+		private final String feedLabel;
+		private final String feedUrl;
+		private final String signInUrl;
+
+		FeedPlatform(String shortName, String displayName, String feedLabel, String feedUrl, String signInUrl) {
+			this.shortName = shortName;
+			this.displayName = displayName;
+			this.feedLabel = feedLabel;
+			this.feedUrl = feedUrl;
+			this.signInUrl = signInUrl;
+		}
+
+		public String shortName() {
+			return shortName;
+		}
+
+		public String displayName() {
+			return displayName;
+		}
+
+		public String feedLabel() {
+			return feedLabel;
+		}
+
+		public String feedUrl() {
+			return feedUrl;
+		}
+
+		public String signInUrl() {
+			return signInUrl;
+		}
+
+		public FeedPlatform next() {
+			FeedPlatform[] values = values();
+			return values[(ordinal() + 1) % values.length];
+		}
+
+		public static FeedPlatform fromUrl(String url) {
+			if (url != null && url.toLowerCase(java.util.Locale.ROOT).contains("instagram.com")) {
+				return INSTAGRAM_REELS;
+			}
+			return YOUTUBE_SHORTS;
+		}
+	}
 
 	public enum LayoutMode {
 		CARD("Shorts"),
@@ -78,6 +144,7 @@ public final class DoomscrollingConfig {
 
 	public enum AccentTheme {
 		YOUTUBE_RED("YouTube Red", 0xFFFF0033),
+		INSTAGRAM_PINK("Insta Pink", 0xFFE1306C),
 		PURE_WHITE("Clean White", 0xFFF1F1F1),
 		LUNAR_GREEN("Emerald", 0xFF1ED760),
 		ARCTIC_CYAN("Cyan", 0xFF38BDF8);
@@ -105,6 +172,7 @@ public final class DoomscrollingConfig {
 	}
 
 	public boolean hudVisible = true;
+	public FeedPlatform platform = FeedPlatform.YOUTUBE_SHORTS;
 	public LayoutMode layoutMode = LayoutMode.CARD;
 	public AccentTheme accentTheme = AccentTheme.YOUTUBE_RED;
 	public QualityPreset qualityPreset = QualityPreset.BALANCED;
@@ -127,7 +195,14 @@ public final class DoomscrollingConfig {
 		DoomscrollingConfig config = null;
 		if (Files.exists(configPath)) {
 			try (Reader reader = Files.newBufferedReader(configPath, StandardCharsets.UTF_8)) {
-				config = GSON.fromJson(reader, DoomscrollingConfig.class);
+				com.google.gson.JsonElement element = com.google.gson.JsonParser.parseReader(reader);
+				if (element != null && element.isJsonObject()) {
+					com.google.gson.JsonObject obj = element.getAsJsonObject();
+					config = GSON.fromJson(obj, DoomscrollingConfig.class);
+					if (config != null && !obj.has("platform")) {
+						config.platform = FeedPlatform.fromUrl(config.startUrl);
+					}
+				}
 			} catch (Exception e) {
 				LOGGER.warn("Failed to read Doomscrolling config at {}; using defaults.", configPath, e);
 			}
@@ -142,6 +217,9 @@ public final class DoomscrollingConfig {
 	}
 
 	public void sanitize() {
+		if (platform == null) {
+			platform = FeedPlatform.fromUrl(startUrl);
+		}
 		if (layoutMode == null) layoutMode = LayoutMode.CARD;
 		if (accentTheme == null) accentTheme = AccentTheme.YOUTUBE_RED;
 		if (qualityPreset == null) qualityPreset = QualityPreset.BALANCED;
@@ -153,8 +231,31 @@ public final class DoomscrollingConfig {
 		autoScrollDelayMs = clampInt(autoScrollDelayMs, 0, 3000);
 		volume = clampFloat(volume, 0.0f, 1.0f);
 		if (startUrl == null || startUrl.isBlank()) {
-			startUrl = DEFAULT_SHORTS_URL;
+			startUrl = platform.feedUrl();
 		}
+	}
+
+	public String effectiveStartUrl() {
+		FeedPlatform active = platform != null ? platform : FeedPlatform.YOUTUBE_SHORTS;
+		if (startUrl == null || startUrl.isBlank()) {
+			return active.feedUrl();
+		}
+		String trimmed = startUrl.trim();
+		if (active == FeedPlatform.INSTAGRAM_REELS && trimmed.equals(DEFAULT_SHORTS_URL)) {
+			return DEFAULT_REELS_URL;
+		}
+		if (active == FeedPlatform.YOUTUBE_SHORTS && trimmed.equals(DEFAULT_REELS_URL)) {
+			return DEFAULT_SHORTS_URL;
+		}
+		return trimmed;
+	}
+
+	public String layoutModeDisplayName() {
+		FeedPlatform active = platform != null ? platform : FeedPlatform.YOUTUBE_SHORTS;
+		if (layoutMode == LayoutMode.COMPACT_AUDIO) {
+			return layoutMode.displayName();
+		}
+		return active.feedLabel();
 	}
 
 	public void save() {

@@ -1,13 +1,15 @@
 {
   "key.category.doomscrolling.controls": "Doomscroll",
-  "key.doomscrolling.toggle_hud": "Toggle Shorts HUD",
-  "key.doomscrolling.next_short": "Next Short",
-  "key.doomscrolling.prev_short": "Previous Short",
+  "key.doomscrolling.toggle_hud": "Toggle Feed HUD",
+  "key.doomscrolling.next_short": "Next Video",
+  "key.doomscrolling.prev_short": "Previous Video",
   "key.doomscrolling.play_pause": "Play / Pause",
-  "key.doomscrolling.like_short": "Like / Unlike Short",
+  "key.doomscrolling.like_short": "Like / Unlike Video",
   "key.doomscrolling.toggle_autoscroll": "Toggle Autoscroll",
   "key.doomscrolling.toggle_mute": "Toggle Mute",
   "key.doomscrolling.open_overlay": "Open Editor & Settings",
-  "key.doomscrolling.cycle_layout": "Toggle Shorts / Mini Mode",
+  "key.doomscrolling.cycle_layout": "Toggle Feed / Mini Mode",
+  "key.doomscrolling.switch_platform": "Switch Platform (Shorts / Reels)",
+  "key.doomscrolling.toggle_comments": "Show / Hide Comments",
   "screen.doomscrolling.title": "Doomscroll"
 }

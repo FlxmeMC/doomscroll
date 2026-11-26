@@ -94,6 +94,8 @@ final class PlatformImpl implements McPlatform {
 		KeyMapping keyToggleMute = registerKey("key.doomscrolling.toggle_mute", InputConstants.KEY_SEMICOLON);
 		KeyMapping keyOpenOverlay = registerKey("key.doomscrolling.open_overlay", InputConstants.KEY_RBRACKET);
 		KeyMapping keyCycleLayout = registerKey("key.doomscrolling.cycle_layout", InputConstants.KEY_LBRACKET);
+		KeyMapping keySwitchPlatform = registerKey("key.doomscrolling.switch_platform", InputConstants.UNKNOWN.getValue());
+		KeyMapping keyToggleComments = registerKey("key.doomscrolling.toggle_comments", InputConstants.KEY_COMMA);
 
 		HudRenderCallback.EVENT.register((guiGraphics, deltaTracker) ->
 				hudRenderer.renderHud(new Mc1211Canvas(guiGraphics))
@@ -153,6 +155,8 @@ final class PlatformImpl implements McPlatform {
 			while (keyToggleAutoScroll.consumeClick()) controller.toggleAutoScroll();
 			while (keyToggleMute.consumeClick()) controller.toggleMute();
 			while (keyCycleLayout.consumeClick()) controller.cycleLayoutMode();
+			while (keySwitchPlatform.consumeClick()) controller.cyclePlatform();
+			while (keyToggleComments.consumeClick()) controller.toggleComments();
 			while (keyOpenOverlay.consumeClick()) openEditor.run();
 		});
 

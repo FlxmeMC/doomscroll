@@ -13,6 +13,8 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.Screen;
 
+import java.util.List;
+
 public final class LunarHudRenderer {
 
 	private static final int OVERLAY_BTN_SIZE = 16;
@@ -24,7 +26,19 @@ public final class LunarHudRenderer {
 		NONE, LEFT, RIGHT, TOP, BOTTOM, TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT
 	}
 
+	private enum OverlayButton {
+		LIKE, COMMENTS, PREV, PLAY, NEXT, VOLUME, CAPTIONS, SETTINGS
+	}
+
+	private static final List<OverlayButton> HUD_BUTTONS = List.of(OverlayButton.values());
+	private static final List<OverlayButton> EDITOR_BUTTONS = List.of(
+			OverlayButton.LIKE, OverlayButton.PREV, OverlayButton.PLAY, OverlayButton.NEXT,
+			OverlayButton.VOLUME, OverlayButton.CAPTIONS
+	);
+
 	private final ShortsBrowserController controller;
+	private final CommentsPanel commentsPanel;
+	private boolean commentsPanelShown = false;
 
 	private boolean draggingHud = false;
 	private boolean scrubbing = false;
@@ -45,6 +59,7 @@ public final class LunarHudRenderer {
 
 	public LunarHudRenderer(ShortsBrowserController controller) {
 		this.controller = controller;
+		this.commentsPanel = new CommentsPanel(controller);
 	}
 
 	public boolean isDraggingOrResizing() {
@@ -103,6 +118,12 @@ public final class LunarHudRenderer {
 			renderCompactMiniCard(g, font, b, state, config, progress, currentTime, accent, bg, mouseX, mouseY, showOverlay);
 		} else {
 			renderShortsOverlayCard(g, font, b, state, config, progress, currentTime, accent, bg, mouseX, mouseY, showOverlay, editorMode);
+		}
+
+		commentsPanelShown = commentsPanel.isVisible(editorMode);
+		if (commentsPanelShown) {
+			commentsPanel.render(g, font, b, screenWidth, screenHeight,
+					interactive ? mouseX : -1, interactive ? mouseY : -1, accent, bg);
 		}
 
 		if (editorMode) {
@@ -174,56 +195,66 @@ public final class LunarHudRenderer {
 		g.drawText(font, ts, b.videoX() + 8, topY + 2, LunarDraw.COLOR_TEXT_PRIMARY, false);
 
 		int btnX = rightButtonX(b);
-		int[] ys = rightButtonYs(b);
+		List<OverlayButton> buttons = overlayButtons(editorMode);
+		int[] ys = rightButtonYs(b, buttons.size());
 
-		boolean hovLike = inBox(mouseX, mouseY, btnX, ys[0], OVERLAY_BTN_SIZE);
-		LunarDraw.drawOverlayIconButton(g, btnX, ys[0], OVERLAY_BTN_SIZE, hovLike, state.liked(), accent);
-		LunarDraw.drawHeartIcon(g, btnX + OVERLAY_BTN_SIZE / 2, ys[0] + OVERLAY_BTN_SIZE / 2,
-				state.liked() ? 0xFFFFFFFF : LunarDraw.COLOR_TEXT_PRIMARY);
-
-		boolean hovPrev = inBox(mouseX, mouseY, btnX, ys[1], OVERLAY_BTN_SIZE);
-		LunarDraw.drawOverlayIconButton(g, btnX, ys[1], OVERLAY_BTN_SIZE, hovPrev, false, accent);
-		LunarDraw.drawUpChevron(g, btnX + OVERLAY_BTN_SIZE / 2, ys[1] + OVERLAY_BTN_SIZE / 2, LunarDraw.COLOR_TEXT_PRIMARY);
-
-		boolean hovPlay = inBox(mouseX, mouseY, btnX, ys[2], OVERLAY_BTN_SIZE);
-		LunarDraw.drawOverlayIconButton(g, btnX, ys[2], OVERLAY_BTN_SIZE, hovPlay, false, accent);
-		if (state.paused()) {
-			LunarDraw.drawPlayIcon(g, btnX + OVERLAY_BTN_SIZE / 2, ys[2] + OVERLAY_BTN_SIZE / 2, LunarDraw.COLOR_TEXT_PRIMARY);
-		} else {
-			LunarDraw.drawPauseIcon(g, btnX + OVERLAY_BTN_SIZE / 2, ys[2] + OVERLAY_BTN_SIZE / 2, LunarDraw.COLOR_TEXT_PRIMARY);
-		}
-
-		boolean hovNext = inBox(mouseX, mouseY, btnX, ys[3], OVERLAY_BTN_SIZE);
-		LunarDraw.drawOverlayIconButton(g, btnX, ys[3], OVERLAY_BTN_SIZE, hovNext, false, accent);
-		LunarDraw.drawDownChevron(g, btnX + OVERLAY_BTN_SIZE / 2, ys[3] + OVERLAY_BTN_SIZE / 2, LunarDraw.COLOR_TEXT_PRIMARY);
-
-		int volY = ys[4];
-		int pillW = Math.min(OVERLAY_BTN_SIZE + VOLUME_PILL_EXTRA_W, b.videoWidth() - 8);
-		int pillX = btnX + OVERLAY_BTN_SIZE - pillW;
-		boolean overVolBtn = inBox(mouseX, mouseY, btnX, volY, OVERLAY_BTN_SIZE);
-		boolean overVolPill = mouseX >= pillX && mouseX < btnX + OVERLAY_BTN_SIZE && mouseY >= volY - 2 && mouseY < volY + OVERLAY_BTN_SIZE + 2;
-		if (overVolBtn || draggingVolume) {
-			volumePillOpen = true;
-		} else if (!overVolPill) {
-			volumePillOpen = false;
-		}
-
-		if (volumePillOpen) {
-			drawYouTubeVolumePill(g, pillX, volY, pillW, OVERLAY_BTN_SIZE, config.volume, config.muted, true);
-		} else {
-			LunarDraw.drawOverlayIconButton(g, btnX, volY, OVERLAY_BTN_SIZE, overVolBtn, config.muted, accent);
-			LunarDraw.drawSpeakerIcon(g, btnX + OVERLAY_BTN_SIZE / 2, volY + OVERLAY_BTN_SIZE / 2, config.muted, LunarDraw.COLOR_TEXT_PRIMARY);
-		}
-
-		boolean hovCc = inBox(mouseX, mouseY, btnX, ys[5], OVERLAY_BTN_SIZE);
-		LunarDraw.drawOverlayIconButton(g, btnX, ys[5], OVERLAY_BTN_SIZE, hovCc, config.subtitles, accent);
-		LunarDraw.drawCaptionsIcon(g, btnX + OVERLAY_BTN_SIZE / 2, ys[5] + OVERLAY_BTN_SIZE / 2,
-				config.subtitles, LunarDraw.COLOR_TEXT_PRIMARY);
-
-		if (!editorMode) {
-			boolean hovSettings = inBox(mouseX, mouseY, btnX, ys[6], OVERLAY_BTN_SIZE);
-			LunarDraw.drawOverlayIconButton(g, btnX, ys[6], OVERLAY_BTN_SIZE, hovSettings, false, accent);
-			LunarDraw.drawSettingsIcon(g, btnX + OVERLAY_BTN_SIZE / 2, ys[6] + OVERLAY_BTN_SIZE / 2, LunarDraw.COLOR_TEXT_PRIMARY);
+		for (int i = 0; i < buttons.size(); i++) {
+			OverlayButton kind = buttons.get(i);
+			int y = ys[i];
+			int cx = btnX + OVERLAY_BTN_SIZE / 2;
+			int cy = y + OVERLAY_BTN_SIZE / 2;
+			boolean hov = inBox(mouseX, mouseY, btnX, y, OVERLAY_BTN_SIZE);
+			switch (kind) {
+				case LIKE -> {
+					LunarDraw.drawOverlayIconButton(g, btnX, y, OVERLAY_BTN_SIZE, hov, state.liked(), accent);
+					LunarDraw.drawHeartIcon(g, cx, cy, state.liked() ? 0xFFFFFFFF : LunarDraw.COLOR_TEXT_PRIMARY);
+				}
+				case COMMENTS -> {
+					boolean open = controller.isCommentsOpen();
+					LunarDraw.drawOverlayIconButton(g, btnX, y, OVERLAY_BTN_SIZE, hov, open, accent);
+					LunarDraw.drawCommentIcon(g, cx, cy, open ? 0xFFFFFFFF : LunarDraw.COLOR_TEXT_PRIMARY);
+				}
+				case PREV -> {
+					LunarDraw.drawOverlayIconButton(g, btnX, y, OVERLAY_BTN_SIZE, hov, false, accent);
+					LunarDraw.drawUpChevron(g, cx, cy, LunarDraw.COLOR_TEXT_PRIMARY);
+				}
+				case PLAY -> {
+					LunarDraw.drawOverlayIconButton(g, btnX, y, OVERLAY_BTN_SIZE, hov, false, accent);
+					if (state.paused()) {
+						LunarDraw.drawPlayIcon(g, cx, cy, LunarDraw.COLOR_TEXT_PRIMARY);
+					} else {
+						LunarDraw.drawPauseIcon(g, cx, cy, LunarDraw.COLOR_TEXT_PRIMARY);
+					}
+				}
+				case NEXT -> {
+					LunarDraw.drawOverlayIconButton(g, btnX, y, OVERLAY_BTN_SIZE, hov, false, accent);
+					LunarDraw.drawDownChevron(g, cx, cy, LunarDraw.COLOR_TEXT_PRIMARY);
+				}
+				case VOLUME -> {
+					int pillW = Math.min(OVERLAY_BTN_SIZE + VOLUME_PILL_EXTRA_W, b.videoWidth() - 8);
+					int pillX = btnX + OVERLAY_BTN_SIZE - pillW;
+					boolean overVolPill = mouseX >= pillX && mouseX < btnX + OVERLAY_BTN_SIZE && mouseY >= y - 2 && mouseY < y + OVERLAY_BTN_SIZE + 2;
+					if (hov || draggingVolume) {
+						volumePillOpen = true;
+					} else if (!overVolPill) {
+						volumePillOpen = false;
+					}
+					if (volumePillOpen) {
+						drawYouTubeVolumePill(g, pillX, y, pillW, OVERLAY_BTN_SIZE, config.volume, config.muted, true);
+					} else {
+						LunarDraw.drawOverlayIconButton(g, btnX, y, OVERLAY_BTN_SIZE, hov, config.muted, accent);
+						LunarDraw.drawSpeakerIcon(g, cx, cy, config.muted, LunarDraw.COLOR_TEXT_PRIMARY);
+					}
+				}
+				case CAPTIONS -> {
+					LunarDraw.drawOverlayIconButton(g, btnX, y, OVERLAY_BTN_SIZE, hov, config.subtitles, accent);
+					LunarDraw.drawCaptionsIcon(g, cx, cy, config.subtitles, LunarDraw.COLOR_TEXT_PRIMARY);
+				}
+				case SETTINGS -> {
+					LunarDraw.drawOverlayIconButton(g, btnX, y, OVERLAY_BTN_SIZE, hov, false, accent);
+					LunarDraw.drawSettingsIcon(g, cx, cy, LunarDraw.COLOR_TEXT_PRIMARY);
+				}
+			}
 		}
 	}
 
@@ -315,10 +346,13 @@ public final class LunarHudRenderer {
 		LunarDraw.drawPrevIcon(g, playCenterX - 17, playCenterY, hovPrev ? accent : LunarDraw.COLOR_TEXT_PRIMARY);
 		LunarDraw.drawNextIcon(g, playCenterX + 17, playCenterY, hovNext ? accent : LunarDraw.COLOR_TEXT_PRIMARY);
 
+		DoomscrollingConfig.FeedPlatform platform = config.platform != null
+				? config.platform
+				: DoomscrollingConfig.FeedPlatform.YOUTUBE_SHORTS;
 		String safeTitle = YouTubeShortsBridge.sanitizeForMinecraftFont(state.displayTitle());
-		if (safeTitle.isEmpty()) safeTitle = "YouTube Shorts";
+		if (safeTitle.isEmpty()) safeTitle = platform.displayName();
 		String safeChannel = YouTubeShortsBridge.sanitizeForMinecraftFont(state.displayChannel());
-		if (safeChannel.isEmpty()) safeChannel = "YouTube";
+		if (safeChannel.isEmpty()) safeChannel = platform.shortName();
 
 		int textMaxW = Math.max(24, fw - transportW - 6);
 		LunarDraw.drawMarqueeText(g, font, safeTitle, fx, fy + 2, textMaxW, LunarDraw.COLOR_TEXT_PRIMARY, false);
@@ -430,6 +464,23 @@ public final class LunarHudRenderer {
 		boolean texReady = tex != null && controller.isBrowserTextureReady();
 		boolean firstLoaded = controller.isFirstShortLoaded();
 		float overlayAlpha = controller.loadingOverlayAlpha();
+		ShortsState st = controller.state();
+		DoomscrollingConfig.FeedPlatform platform = controller.config().platform != null
+				? controller.config().platform
+				: DoomscrollingConfig.FeedPlatform.YOUTUBE_SHORTS;
+
+		if (firstLoaded && st.botGateDetected() && !st.videoReady() && !st.signedIn()) {
+			int cx = x + w / 2;
+			int cy = y + h / 2;
+			if (w >= 64) {
+				g.drawCenteredText(font, "Sign in to", cx, cy - 12, LunarDraw.COLOR_TEXT_SECONDARY);
+				g.drawCenteredText(font, platform.shortName(), cx, cy - 1, accent);
+				g.drawCenteredText(font, "Press ] to log in", cx, cy + 13, LunarDraw.COLOR_TEXT_MUTED);
+			} else {
+				LunarDraw.drawPlayIcon(g, cx, cy, accent);
+			}
+			return;
+		}
 
 		if (texReady && firstLoaded) {
 			g.blitTexture(tex, x, y, w, h);
@@ -451,7 +502,7 @@ public final class LunarHudRenderer {
 					LunarDraw.drawIndeterminateBar(g, cx - barW / 2, cy + 12, barW, 2, LunarDraw.withAlpha(accent, bgAlpha));
 				}
 				int labelAlpha = Math.max(0, Math.min(255, Math.round(a * 170.0f)));
-				g.drawCenteredText(font, "Loading Shorts", cx, cy + 20, (labelAlpha << 24) | 0xAAAAAA);
+				g.drawCenteredText(font, "Loading " + platform.feedLabel(), cx, cy + 20, (labelAlpha << 24) | 0xAAAAAA);
 			}
 		}
 	}
@@ -496,6 +547,10 @@ public final class LunarHudRenderer {
 				resizeAnchorBottom = b.y() + b.height();
 				return true;
 			}
+		}
+
+		if (commentsPanel.isVisible(editorMode) && commentsPanel.handleClick(mx, my, b, screenWidth, screenHeight)) {
+			return true;
 		}
 
 		if (!b.contains(mx, my)) {
@@ -552,8 +607,9 @@ public final class LunarHudRenderer {
 		}
 
 		int btnX = rightButtonX(b);
-		int[] ys = rightButtonYs(b);
-		int volY = ys[4];
+		List<OverlayButton> buttons = overlayButtons(editorMode);
+		int[] ys = rightButtonYs(b, buttons.size());
+		int volY = ys[buttons.indexOf(OverlayButton.VOLUME)];
 		int pillW = Math.min(OVERLAY_BTN_SIZE + VOLUME_PILL_EXTRA_W, b.videoWidth() - 8);
 		int pillX = btnX + OVERLAY_BTN_SIZE - pillW;
 
@@ -573,33 +629,21 @@ public final class LunarHudRenderer {
 			return true;
 		}
 
-		if (inBox(mx, my, btnX, ys[0], OVERLAY_BTN_SIZE)) {
-			controller.toggleLike();
-			return true;
-		}
-		if (inBox(mx, my, btnX, ys[1], OVERLAY_BTN_SIZE)) {
-			controller.previousShort();
-			return true;
-		}
-		if (inBox(mx, my, btnX, ys[2], OVERLAY_BTN_SIZE)) {
-			controller.togglePlayPause();
-			return true;
-		}
-		if (inBox(mx, my, btnX, ys[3], OVERLAY_BTN_SIZE)) {
-			controller.nextShort();
-			return true;
-		}
-		if (inBox(mx, my, btnX, ys[4], OVERLAY_BTN_SIZE)) {
-			controller.toggleMute();
-			return true;
-		}
-		if (inBox(mx, my, btnX, ys[5], OVERLAY_BTN_SIZE)) {
-			controller.toggleSubtitles();
-			return true;
-		}
-		if (!editorMode && inBox(mx, my, btnX, ys[6], OVERLAY_BTN_SIZE)) {
-			if (allowOpenSettings) {
-				McPlatform.get().setScreen(Minecraft.getInstance(), DoomscrollingClient.createScreen(null));
+		for (int i = 0; i < buttons.size(); i++) {
+			if (!inBox(mx, my, btnX, ys[i], OVERLAY_BTN_SIZE)) continue;
+			switch (buttons.get(i)) {
+				case LIKE -> controller.toggleLike();
+				case COMMENTS -> controller.toggleComments();
+				case PREV -> controller.previousShort();
+				case PLAY -> controller.togglePlayPause();
+				case NEXT -> controller.nextShort();
+				case VOLUME -> controller.toggleMute();
+				case CAPTIONS -> controller.toggleSubtitles();
+				case SETTINGS -> {
+					if (allowOpenSettings) {
+						McPlatform.get().setScreen(Minecraft.getInstance(), DoomscrollingClient.createScreen(null));
+					}
+				}
 			}
 			return true;
 		}
@@ -608,6 +652,12 @@ public final class LunarHudRenderer {
 			draggingHud = true;
 			dragOffsetX = (int) mx - b.x();
 			dragOffsetY = (int) my - b.y();
+			return true;
+		}
+
+		ShortsState st = controller.state();
+		if (allowOpenSettings && !editorMode && st.botGateDetected() && !st.videoReady() && !st.signedIn()) {
+			McPlatform.get().setScreen(Minecraft.getInstance(), DoomscrollingClient.createScreen(null));
 			return true;
 		}
 
@@ -677,6 +727,9 @@ public final class LunarHudRenderer {
 			return false;
 		}
 		HudBounds b = HudBounds.compute(controller.config(), screenWidth, screenHeight);
+		if (commentsPanelShown && commentsPanel.isVisible(false) && commentsPanel.handleScroll(mx, my, scrollY, b, screenWidth, screenHeight)) {
+			return true;
+		}
 		if (!b.contains(mx, my)) {
 			return false;
 		}
@@ -758,8 +811,11 @@ public final class LunarHudRenderer {
 		return b.videoX() + b.videoWidth() - OVERLAY_BTN_SIZE - 4;
 	}
 
-	private static int[] rightButtonYs(HudBounds b) {
-		int count = 7;
+	private static List<OverlayButton> overlayButtons(boolean editorMode) {
+		return editorMode ? EDITOR_BUTTONS : HUD_BUTTONS;
+	}
+
+	private static int[] rightButtonYs(HudBounds b, int count) {
 		int totalH = count * OVERLAY_BTN_SIZE + (count - 1) * OVERLAY_BTN_GAP;
 		int bottomLimit = b.videoY() + b.videoHeight() - 8;
 		int startY = Math.max(b.videoY() + 18, bottomLimit - totalH);

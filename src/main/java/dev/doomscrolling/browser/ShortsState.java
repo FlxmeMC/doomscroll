@@ -1,5 +1,9 @@
 package dev.doomscrolling.browser;
 
+import dev.doomscrolling.config.DoomscrollingConfig;
+
+import java.util.Locale;
+
 public record ShortsState(
 		String videoId,
 		String title,
@@ -20,25 +24,32 @@ public record ShortsState(
 		String currentUrl
 ) {
 
-	public static final ShortsState INITIAL = new ShortsState(
-			"",
-			"YouTube Shorts",
-			"Loading...",
-			0.0,
-			0.0,
-			0L,
-			1.0f,
-			true,
-			false,
-			false,
-			false,
-			true,
-			true,
-			false,
-			false,
-			false,
-			""
-	);
+	public static final ShortsState INITIAL = initialFor(DoomscrollingConfig.FeedPlatform.YOUTUBE_SHORTS);
+
+	public static ShortsState initialFor(DoomscrollingConfig.FeedPlatform platform) {
+		DoomscrollingConfig.FeedPlatform active = platform != null
+				? platform
+				: DoomscrollingConfig.FeedPlatform.YOUTUBE_SHORTS;
+		return new ShortsState(
+				"",
+				active.displayName(),
+				"Loading...",
+				0.0,
+				0.0,
+				0L,
+				1.0f,
+				true,
+				false,
+				false,
+				false,
+				true,
+				true,
+				false,
+				false,
+				false,
+				active.feedUrl()
+		);
+	}
 
 	public double interpolatedTimeSec(long nowNanos) {
 		if (durationSec <= 0.0) {
@@ -63,8 +74,16 @@ public record ShortsState(
 		if (title != null && !title.isBlank()) {
 			return title;
 		}
-		if (!onShortsPage && currentUrl != null && currentUrl.contains("accounts.google.com")) {
-			return "Google Sign-In";
+		if (!onShortsPage && currentUrl != null) {
+			if (currentUrl.contains("accounts.google.com")) {
+				return "Google Sign-In";
+			}
+			if (isInstagramSignInUrl(currentUrl)) {
+				return "Instagram Sign-In";
+			}
+		}
+		if (isInstagramUrl(currentUrl)) {
+			return loading ? "Loading Reels..." : "Instagram Reels";
 		}
 		return loading ? "Loading Shorts..." : "YouTube Shorts";
 	}
@@ -73,8 +92,11 @@ public record ShortsState(
 		if (channel != null && !channel.isBlank()) {
 			return channel;
 		}
-		if (!onShortsPage && currentUrl != null && currentUrl.contains("accounts.google.com")) {
+		if (!onShortsPage && currentUrl != null && isSignInUrl(currentUrl)) {
 			return "Local account session";
+		}
+		if (isInstagramUrl(currentUrl)) {
+			return signedIn ? "Instagram Reels" : "Guest";
 		}
 		return signedIn ? "YouTube Shorts" : "Guest";
 	}
@@ -92,7 +114,7 @@ public record ShortsState(
 				muted,
 				liked,
 				signedIn,
-				isShortsUrl(url),
+				isFeedUrl(url),
 				isLoading,
 				buffering,
 				videoReady,
@@ -102,7 +124,44 @@ public record ShortsState(
 	}
 
 	public static boolean isShortsUrl(String url) {
-		return url != null && url.contains("youtube.com/shorts");
+		return url != null && url.toLowerCase(Locale.ROOT).contains("youtube.com/shorts");
+	}
+
+	public static boolean isInstagramUrl(String url) {
+		return url != null && url.toLowerCase(Locale.ROOT).contains("instagram.com");
+	}
+
+	public static boolean isReelsUrl(String url) {
+		if (!isInstagramUrl(url)) {
+			return false;
+		}
+		String lower = url.toLowerCase(Locale.ROOT);
+		if (lower.contains("/reels/audio/")) {
+			return false;
+		}
+		return lower.contains("/reels") || lower.contains("/reel/");
+	}
+
+	public static boolean isFeedUrl(String url) {
+		return isShortsUrl(url) || isReelsUrl(url);
+	}
+
+	public static boolean isInstagramSignInUrl(String url) {
+		if (!isInstagramUrl(url)) {
+			return false;
+		}
+		String lower = url.toLowerCase(Locale.ROOT);
+		return lower.contains("/accounts/login")
+				|| lower.contains("/accounts/emailsignup")
+				|| lower.contains("/challenge")
+				|| lower.contains("/two_factor");
+	}
+
+	public static boolean isSignInUrl(String url) {
+		if (url == null) {
+			return false;
+		}
+		return url.toLowerCase(Locale.ROOT).contains("accounts.google.com") || isInstagramSignInUrl(url);
 	}
 
 	public static String formatTimestamp(double seconds) {

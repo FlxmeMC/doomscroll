@@ -1,15 +1,19 @@
 package dev.doomscrolling.browser;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 public final class YouTubeShortsBridge {
 
 	public static final String MESSAGE_PREFIX = "__DS__:";
 	public static final String EVENT_PREFIX = "__DS_EVT__:";
+	public static final String COMMENTS_PREFIX = "__DS_CMT__:";
 
 	private YouTubeShortsBridge() {
 	}
@@ -23,7 +27,8 @@ public final class YouTubeShortsBridge {
 			boolean muted,
 			boolean subtitles
 	) {
-		return BOOTSTRAP_TEMPLATE
+		String template = BOOTSTRAP_TEMPLATE.replace("__DS_INSTAGRAM_BRANCH__", InstagramReelsBridge.INSTAGRAM_BRANCH_SCRIPT);
+		return template
 				.replace("__DS_HUD_FLAG__", hudMode ? "1" : "0")
 				.replace("__DS_SHOW_CAPTION__", showCaption ? "true" : "false")
 				.replace("__DS_AUTO_SCROLL__", autoScroll ? "true" : "false")
@@ -59,6 +64,19 @@ public final class YouTubeShortsBridge {
 		return "if(window.__doomscrolling){window.__doomscrolling." + methodCall + ";}";
 	}
 
+	public static String buildSetCommentsOpenScript(boolean open) {
+		return buildActionScript("setCommentsOpen(" + open + ")");
+	}
+
+	/**
+	 * Re-opens comments on a freshly loaded page (full reloads reset the page-side state)
+	 * without restarting them on pages where they are already open.
+	 */
+	public static String buildCommentsResyncScript() {
+		return "if(window.__doomscrolling&&window.__doomscrolling.isCommentsOpen"
+				+ "&&!window.__doomscrolling.isCommentsOpen()){window.__doomscrolling.setCommentsOpen(true);}";
+	}
+
 	public static String buildSeekScript(float ratio) {
 		return String.format(
 				Locale.ROOT,
@@ -89,7 +107,7 @@ public final class YouTubeShortsBridge {
 			boolean muted = getBoolean(obj, "m", false);
 			boolean liked = getBoolean(obj, "l", false);
 			boolean signedIn = getBoolean(obj, "s", false);
-			boolean onShorts = getBoolean(obj, "sh", ShortsState.isShortsUrl(url));
+			boolean onShorts = getBoolean(obj, "sh", ShortsState.isFeedUrl(url));
 			boolean buffering = getBoolean(obj, "b", false);
 			boolean videoReady = getBoolean(obj, "vr", false);
 			boolean botGate = getBoolean(obj, "bg", false);
@@ -123,6 +141,46 @@ public final class YouTubeShortsBridge {
 			return null;
 		}
 		return consoleMessage.substring(EVENT_PREFIX.length()).trim();
+	}
+
+	public static CommentsState parseCommentsMessage(String consoleMessage) {
+		if (consoleMessage == null || !consoleMessage.startsWith(COMMENTS_PREFIX)) {
+			return null;
+		}
+		String jsonText = consoleMessage.substring(COMMENTS_PREFIX.length());
+		try {
+			JsonElement element = JsonParser.parseString(jsonText);
+			if (!element.isJsonObject()) {
+				return null;
+			}
+			JsonObject obj = element.getAsJsonObject();
+			String videoId = getString(obj, "id", "");
+			String totalLabel = getString(obj, "cnt", "");
+			boolean open = getBoolean(obj, "open", false);
+			boolean loading = getBoolean(obj, "loading", false);
+			boolean signInRequired = getBoolean(obj, "sr", false);
+			List<CommentsState.CommentItem> items = new ArrayList<>();
+			JsonElement arrEl = obj.get("items");
+			if (arrEl != null && arrEl.isJsonArray()) {
+				JsonArray arr = arrEl.getAsJsonArray();
+				int limit = Math.min(arr.size(), 30);
+				for (int i = 0; i < limit; i++) {
+					JsonElement itemEl = arr.get(i);
+					if (itemEl == null || !itemEl.isJsonObject()) continue;
+					JsonObject itemObj = itemEl.getAsJsonObject();
+					String author = getString(itemObj, "a", "").trim();
+					String text = getString(itemObj, "x", "").trim();
+					String likes = getString(itemObj, "l", "").trim();
+					String timeAgo = getString(itemObj, "t", "").trim();
+					if (!text.isEmpty()) {
+						items.add(new CommentsState.CommentItem(author, text, likes, timeAgo));
+					}
+				}
+			}
+			return new CommentsState(videoId, totalLabel, open, loading, signInRequired, List.copyOf(items));
+		} catch (Exception ignored) {
+			return null;
+		}
 	}
 
 	public static String sanitizeForMinecraftFont(String input) {
@@ -180,8 +238,13 @@ public final class YouTubeShortsBridge {
 
 	private static final String BOOTSTRAP_TEMPLATE = """
 			(function() {
-			  const host = (location && location.hostname) || '';
+			  const host = ((location && location.hostname) || '').toLowerCase();
 			  const isYouTube = host.includes('youtube.com');
+			  const isInstagram = host.includes('instagram.com');
+			  if (isInstagram) {
+			__DS_INSTAGRAM_BRANCH__
+			    return;
+			  }
 			  if (!isYouTube) {
 			    document.documentElement.dataset.dsHud = '0';
 			    const oldCap = document.getElementById('ds-caption-overlay');
@@ -194,6 +257,7 @@ public final class YouTubeShortsBridge {
 			    } catch (_) {}
 			    return;
 			  }
+			  document.documentElement.dataset.dsPlatform = 'youtube';
 
 			  const STYLE_ID = 'doomscrolling-clean-css';
 			  if (!document.getElementById(STYLE_ID)) {
@@ -238,6 +302,19 @@ public final class YouTubeShortsBridge {
 			        visibility: hidden !important;
 			        opacity: 0 !important;
 			        pointer-events: none !important;
+			      }
+			      html[data-ds-hud="1"][data-ds-comments="1"] #shorts-panel-container,
+			      html[data-ds-hud="1"][data-ds-comments="1"] ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-comments-section"] {
+			        display: block !important;
+			        visibility: visible !important;
+			        opacity: 0 !important;
+			        pointer-events: none !important;
+			        position: fixed !important;
+			        left: 0 !important;
+			        top: 0 !important;
+			        width: 360px !important;
+			        height: 640px !important;
+			        z-index: 1 !important;
 			      }
 			      html[data-ds-hud="1"] ytd-page-manager,
 			      html[data-ds-hud="1"] #page-manager,
@@ -416,6 +493,14 @@ public final class YouTubeShortsBridge {
 			      volume: 0.65,
 			      muted: false,
 			      subtitles: false,
+			      commentsOpen: false,
+			      commentsOpenedForId: '',
+			      commentsOpenAtMs: 0,
+			      lastCommentsKey: '',
+			      lastCommentsPushMs: 0,
+			      commentsClickedAtMs: 0,
+			      commentsRetryId: '',
+			      commentsRetries: 0,
 			      lastSubtitlesSyncId: '',
 			      lastPushMs: 0,
 			      lastKey: '',
@@ -659,6 +744,131 @@ public final class YouTubeShortsBridge {
 			      }, delay);
 			    }
 
+			    function getCommentsButton(reel) {
+			      if (!reel) return null;
+			      return reel.querySelector('#comments-button button')
+			        || reel.querySelector('ytd-button-renderer#comments-button button')
+			        || reel.querySelector('button[aria-label*="comment" i]')
+			        || reel.querySelector('[aria-label*="comment" i] button');
+			    }
+
+			    function getCommentsPanel() {
+			      return document.querySelector('ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-comments-section"]')
+			        || document.querySelector('#shorts-panel-container ytd-engagement-panel-section-list-renderer')
+			        || document.querySelector('#shorts-panel-container');
+			    }
+
+			    function isCommentsPanelExpanded(panel) {
+			      if (!panel) return false;
+			      const vis = panel.getAttribute('visibility');
+			      if (vis === 'ENGAGEMENT_PANEL_VISIBILITY_EXPANDED') return true;
+			      return !!panel.querySelector('ytd-comment-thread-renderer, ytd-comment-view-model, ytd-comment-renderer');
+			    }
+
+			    function openNativeComments(reel, id) {
+			      const panel = getCommentsPanel();
+			      if (panel && panel.getAttribute('visibility') === 'ENGAGEMENT_PANEL_VISIBILITY_EXPANDED') {
+			        state.commentsOpenedForId = id || '';
+			        return;
+			      }
+			      const btn = getCommentsButton(reel);
+			      if (!btn) return;
+			      state.commentsOpenedForId = id || '';
+			      state.commentsClickedAtMs = performance.now();
+			      try { btn.click(); } catch (_) {}
+			    }
+
+			    function closeNativeComments() {
+			      const panel = getCommentsPanel();
+			      if (!panel) return;
+			      const vis = panel.getAttribute('visibility');
+			      if (vis && vis !== 'ENGAGEMENT_PANEL_VISIBILITY_EXPANDED') return;
+			      const closeBtn = panel.querySelector('#visibility-button button, button[aria-label="Close"], ytd-button-renderer#visibility-button button');
+			      if (closeBtn) {
+			        try { closeBtn.click(); } catch (_) {}
+			      }
+			    }
+
+			    function scrapeYouTubeComments(id) {
+			      const panel = getCommentsPanel();
+			      const items = [];
+			      let totalLabel = '';
+			      let emptyConfirmed = false;
+
+			      if (panel) {
+			        const countEl = panel.querySelector('#contextual-info, ytd-engagement-panel-title-header-renderer #contextual-info');
+			        if (countEl) {
+			          totalLabel = (countEl.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 24);
+			        }
+			        const msgEl = panel.querySelector('ytd-message-renderer, #message');
+			        if (msgEl) {
+			          const mt = (msgEl.textContent || '').toLowerCase();
+			          if (mt.includes('comments are turned off') || mt.includes('no comments')) {
+			            emptyConfirmed = true;
+			          }
+			        }
+
+			        let nodes = panel.querySelectorAll('ytd-comment-thread-renderer');
+			        if (!nodes || nodes.length === 0) {
+			          nodes = panel.querySelectorAll('ytd-comment-view-model, ytd-comment-renderer');
+			        }
+			        const seen = new Set();
+			        for (const node of nodes) {
+			          if (items.length >= 25) break;
+			          const root = node.querySelector('#comment, ytd-comment-view-model, ytd-comment-renderer') || node;
+			          let author = pickText(root, ['#author-text', '#header-author a', 'a[href*="/@"]']);
+			          const text = pickText(root, ['#content-text', 'yt-attributed-string#content-text', '.yt-core-attributed-string']);
+			          if (!text) continue;
+			          if (author && !author.startsWith('@') && !author.includes(' ')) author = '@' + author;
+			          const likes = pickText(root, ['#vote-count-middle', 'span#vote-count-middle']);
+			          const timeAgo = pickText(root, ['#published-time-text a', '#published-time-text', 'a[href*="lc="]']);
+			          const clippedText = text.length > 240 ? text.slice(0, 240) : text;
+			          const dedupe = author + '|' + clippedText;
+			          if (seen.has(dedupe)) continue;
+			          seen.add(dedupe);
+			          items.push({
+			            a: author.slice(0, 48),
+			            x: clippedText,
+			            l: likes.slice(0, 16),
+			            t: timeAgo.replace(/\\s*\\(edited\\)/i, '').trim().slice(0, 24)
+			          });
+			        }
+			      }
+
+			      const hasSpinner = !!(panel && panel.querySelector('tp-yt-paper-spinner, ytd-continuation-item-renderer'));
+			      const waitingWindow = (performance.now() - state.commentsOpenAtMs) < 2800;
+			      const loading = items.length === 0 && !emptyConfirmed && (hasSpinner || waitingWindow || !isCommentsPanelExpanded(panel));
+			      return { id: id || '', open: state.commentsOpen, loading, sr: false, cnt: totalLabel, items };
+			    }
+
+			    function pushComments(force) {
+			      if (!state.commentsOpen) return;
+			      const now = performance.now();
+			      if (!force && now - state.lastCommentsPushMs < 850) return;
+			      const onShorts = location.pathname.includes('/shorts');
+			      const id = getShortsId();
+			      if (state.commentsRetryId !== id) {
+			        state.commentsRetryId = id;
+			        state.commentsRetries = 0;
+			      }
+			      if (onShorts && id && state.commentsOpenedForId === id && state.commentsRetries < 2
+			          && now - state.commentsClickedAtMs > 2500 && !isCommentsPanelExpanded(getCommentsPanel())) {
+			        state.commentsRetries++;
+			        state.commentsOpenedForId = '';
+			      }
+			      if (onShorts && id && state.commentsOpenedForId !== id) {
+			        openNativeComments(getActiveReel(), id);
+			      }
+			      const payload = scrapeYouTubeComments(id);
+			      const key = payload.id + '|' + payload.loading + '|' + payload.cnt + '|' + payload.items.length + '|' + (payload.items[0] ? payload.items[0].x : '');
+			      if (!force && key === state.lastCommentsKey) return;
+			      state.lastCommentsKey = key;
+			      state.lastCommentsPushMs = now;
+			      try {
+			        console.info('__DS_CMT__:' + JSON.stringify(payload));
+			      } catch (_) {}
+			    }
+
 			    function pushState(force) {
 			      const reel = getActiveReel();
 			      const video = getActiveVideo();
@@ -676,7 +886,7 @@ public final class YouTubeShortsBridge {
 			      const signed = isSignedIn();
 			      const onShorts = location.pathname.includes('/shorts');
 			      const videoReady = !!(video && video.readyState >= 2 && video.videoWidth > 0 && Number.isFinite(d) && d > 0.1);
-			      const botGate = !signed && !videoReady && onShorts && !!document.querySelector('ytd-enforcement-message-view-model, .yt-playability-error-supported-renderers, [aria-label*="Sign in"]');
+			      const botGate = !signed && !videoReady && onShorts && !!document.querySelector('ytd-enforcement-message-view-model, .yt-playability-error-supported-renderers');
 
 			      updateNativeCaption(title, channel, onShorts, videoReady);
 
@@ -693,6 +903,20 @@ public final class YouTubeShortsBridge {
 			          }
 			        } catch (_) {}
 			        applySubtitles(false);
+			        if (state.commentsOpen && onShorts) {
+			          state.commentsOpenedForId = '';
+			          state.lastCommentsKey = '';
+			          state.commentsOpenAtMs = performance.now();
+			          try {
+			            console.info('__DS_CMT__:' + JSON.stringify({ id, open: true, loading: true, sr: false, cnt: '', items: [] }));
+			          } catch (_) {}
+			          setTimeout(() => {
+			            if (!state.commentsOpen) return;
+			            openNativeComments(getActiveReel(), getShortsId());
+			            pushComments(true);
+			          }, 350);
+			          setTimeout(() => pushComments(true), 1200);
+			        }
 			        force = true;
 			      } else if (onShorts && state.subtitles && state.lastSubtitlesSyncId !== (id + ':true') && videoReady) {
 			        applySubtitles(false);
@@ -706,6 +930,10 @@ public final class YouTubeShortsBridge {
 			        state.lastTime = t;
 			      } else {
 			        state.lastTime = t;
+			      }
+
+			      if (state.commentsOpen && onShorts) {
+			        pushComments(false);
 			      }
 
 			      const now = performance.now();
@@ -749,6 +977,7 @@ public final class YouTubeShortsBridge {
 			        state.muted = !!muted;
 			        state.subtitles = !!subtitles;
 			        document.documentElement.dataset.dsHud = state.hudMode ? '1' : '0';
+			        document.documentElement.dataset.dsComments = state.commentsOpen ? '1' : '0';
 			        applyAudio(getActiveVideo());
 			        applySubtitles(true);
 			        pushState(true);
@@ -797,6 +1026,31 @@ public final class YouTubeShortsBridge {
 			        v.currentTime = Math.max(0, Math.min(v.duration - 0.05, ratio * v.duration));
 			        state.lastTime = v.currentTime;
 			        pushState(true);
+			      },
+			      setCommentsOpen(open) {
+			        state.commentsOpen = !!open;
+			        document.documentElement.dataset.dsComments = state.commentsOpen ? '1' : '0';
+			        state.lastCommentsKey = '';
+			        const id = getShortsId();
+			        if (state.commentsOpen) {
+			          state.commentsOpenAtMs = performance.now();
+			          openNativeComments(getActiveReel(), id);
+			          try {
+			            console.info('__DS_CMT__:' + JSON.stringify({ id, open: true, loading: true, sr: false, cnt: '', items: [] }));
+			          } catch (_) {}
+			          setTimeout(() => pushComments(true), 450);
+			          setTimeout(() => pushComments(true), 1200);
+			          setTimeout(() => pushComments(true), 2400);
+			        } else {
+			          state.commentsOpenedForId = '';
+			          closeNativeComments();
+			          try {
+			            console.info('__DS_CMT__:' + JSON.stringify({ id, open: false, loading: false, sr: false, cnt: '', items: [] }));
+			          } catch (_) {}
+			        }
+			      },
+			      isCommentsOpen() {
+			        return !!state.commentsOpen;
 			      }
 			    };
 
